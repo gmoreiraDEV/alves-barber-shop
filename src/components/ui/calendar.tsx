@@ -5,9 +5,10 @@ import {
   DayPicker,
   getDefaultClassNames,
   type DayButton,
+  type ChevronProps,
   type Locale,
 } from "react-day-picker";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -100,12 +101,23 @@ export function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: ({ className: iconClass, ...iconProps }) => (
-          <ChevronLeft className={cn("h-4 w-4", iconClass)} {...iconProps} />
-        ),
-        IconRight: ({ className: iconClass, ...iconProps }) => (
-          <ChevronRight className={cn("h-4 w-4", iconClass)} {...iconProps} />
-        ),
+        Chevron: ({
+          className: iconClass,
+          orientation,
+          disabled: _disabled,
+          ...iconProps
+        }: ChevronProps) => {
+          const Icon =
+            orientation === "left"
+              ? ChevronLeft
+              : orientation === "right"
+                ? ChevronRight
+                : orientation === "up"
+                  ? ChevronUp
+                  : ChevronDown;
+
+          return <Icon className={cn("h-4 w-4", iconClass)} {...iconProps} />;
+        },
         DayButton: ({ ...dayButtonProps }) => (
           <CalendarDayButton locale={locale} {...dayButtonProps} />
         ),

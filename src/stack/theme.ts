@@ -1,6 +1,9 @@
-import type { StackTheme } from "@stackframe/stack";
+import { StackTheme } from "@stackframe/stack";
+import type { ComponentProps } from "react";
 
-export const stackTheme: StackTheme = {
+type StackThemeConfig = NonNullable<ComponentProps<typeof StackTheme>["theme"]>;
+
+export const stackTheme: StackThemeConfig = {
   light: {
     background: "#0c0a09",
     foreground: "#f5f5f4",
