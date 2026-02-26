@@ -12,15 +12,43 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   const body = await request.json();
-  const { isActive } = body;
+  const { isActive, name, description, price, duration } = body;
 
-  if (typeof isActive !== "boolean") {
+  const updateData: {
+    isActive?: boolean;
+    name?: string;
+    description?: string;
+    price?: number;
+    duration?: number;
+  } = {};
+
+  if (typeof isActive === "boolean") {
+    updateData.isActive = isActive;
+  }
+
+  if (typeof name === "string") {
+    updateData.name = name;
+  }
+
+  if (typeof description === "string") {
+    updateData.description = description;
+  }
+
+  if (typeof price === "number" && Number.isFinite(price)) {
+    updateData.price = price;
+  }
+
+  if (typeof duration === "number" && Number.isFinite(duration)) {
+    updateData.duration = duration;
+  }
+
+  if (Object.keys(updateData).length === 0) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
   const service = await prisma.service.update({
     where: { id },
-    data: { isActive },
+    data: updateData,
   });
 
   return NextResponse.json(service);
@@ -46,6 +74,9 @@ export async function DELETE(_request: Request, { params }: Params) {
     return NextResponse.json(service);
   } catch (error) {
     console.error("Failed to delete service", { id, error });
-    return NextResponse.json({ error: "Failed to delete service" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to delete service" },
+      { status: 500 },
+    );
   }
 }

@@ -4,7 +4,7 @@ import { useUser } from "@stackframe/stack";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { type LoadResult, loadAdminData } from "@/lib/app-data";
-import type { Service } from "@/types";
+import type { Barber, BarberAbsence, Service } from "@/types";
 import AdminDashboard from "./AdminDashboard";
 import AdminLogin from "./AdminLogin";
 
@@ -92,6 +92,22 @@ export default function DashboardPage() {
     await loadData();
   };
 
+  const handleUpdateService = async (
+    id: string,
+    service: Omit<Service, "id" | "isActive">,
+  ) => {
+    const response = await fetch(`/api/services/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(service),
+    });
+    if (!response.ok) {
+      throw new Error("Falha ao editar serviço");
+    }
+
+    await loadData();
+  };
+
   const handleDeleteService = async (id: string) => {
     const response = await fetch(`/api/services/${id}`, { method: "DELETE" });
     if (!response.ok) {
@@ -111,6 +127,19 @@ export default function DashboardPage() {
     });
     if (!response.ok) {
       throw new Error("Falha ao criar barbeiro");
+    }
+
+    await loadData();
+  };
+
+  const handleUpdateBarber = async (id: string, barber: Omit<Barber, "id">) => {
+    const response = await fetch(`/api/barbers/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(barber),
+    });
+    if (!response.ok) {
+      throw new Error("Falha ao editar barbeiro");
     }
 
     await loadData();
@@ -136,6 +165,22 @@ export default function DashboardPage() {
     });
     if (!response.ok) {
       throw new Error("Falha ao criar ausência");
+    }
+
+    await loadData();
+  };
+
+  const handleUpdateAbsence = async (
+    id: string,
+    absence: Omit<BarberAbsence, "id">,
+  ) => {
+    const response = await fetch(`/api/absences/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(absence),
+    });
+    if (!response.ok) {
+      throw new Error("Falha ao editar ausência");
     }
 
     await loadData();
@@ -175,10 +220,13 @@ export default function DashboardPage() {
         onAddService={handleAddService}
         onSetServiceActive={handleSetServiceActive}
         onDeleteService={handleDeleteService}
+        onUpdateService={handleUpdateService}
         onAddBarber={handleAddBarber}
         onDeleteBarber={handleDeleteBarber}
+        onUpdateBarber={handleUpdateBarber}
         onAddAbsence={handleAddAbsence}
         onDeleteAbsence={handleDeleteAbsence}
+        onUpdateAbsence={handleUpdateAbsence}
         onLogout={() => user.signOut()}
         adminName={user.displayName || user.primaryEmail || "Admin"}
       />

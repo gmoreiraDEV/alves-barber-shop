@@ -9,6 +9,7 @@ type ServicesTableProps = {
   services: Service[];
   onSetServiceActive: (id: string, isActive: boolean) => Promise<void>;
   onDeleteClick: (service: Service) => void;
+  onEditClick: (service: Service) => void;
   onAddClick: () => void;
 };
 
@@ -16,6 +17,7 @@ export default function ServicesTable({
   services,
   onSetServiceActive,
   onDeleteClick,
+  onEditClick,
   onAddClick,
 }: ServicesTableProps) {
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -104,6 +106,14 @@ export default function ServicesTable({
                       className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20 disabled:opacity-60"
                     >
                       {service.isActive ? "Desativar" : "Ativar"}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => onEditClick(service)}
+                      className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-600 text-sky-400 hover:bg-sky-600/20 disabled:opacity-60"
+                    >
+                      Editar
                     </button>
 
                     <button
