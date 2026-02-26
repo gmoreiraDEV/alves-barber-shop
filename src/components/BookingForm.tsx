@@ -58,6 +58,10 @@ export default function BookingForm({
   );
 
   const serviceDuration = selectedService?.duration ?? 30;
+  const selectedBarber = useMemo(
+    () => barbers.find((barber) => barber.id === barberId),
+    [barberId, barbers],
+  );
 
   const timeSlots = useMemo(() => {
     const slots: string[] = [];
@@ -280,7 +284,7 @@ export default function BookingForm({
 
         <div className="flex flex-col gap-2">
           <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
-            Barbeiro
+            Barbeiro {selectedBarber ? `• ${selectedBarber.name}` : ""}
           </label>
           <select
             value={barberId}

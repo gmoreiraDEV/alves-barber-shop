@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Trash2 } from "lucide-react";
 import { format } from "date-fns";
+import { useMemo, useState } from "react";
 import type { Appointment, Barber, BarberAbsence, Service } from "../types";
+import AdminAppointmentsBoard from "./AdminAppointmentsBoard";
+import ServicesTable from "./ServicesTable";
+import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Button } from "./ui/button";
 import { useToast } from "./ui/toast";
 
 type AdminDashboardProps = {
@@ -15,71 +16,32 @@ type AdminDashboardProps = {
   barbers: Barber[];
   absences: BarberAbsence[];
   onDeleteAppointment: (id: string) => Promise<void>;
+  onMoveAppointment: (id: string, nextDateIso: string) => Promise<void>;
   onAddService: (service: Omit<Service, "id" | "isActive">) => Promise<void>;
   onSetServiceActive: (id: string, isActive: boolean) => Promise<void>;
   onDeleteService: (id: string) => Promise<void>;
-  onAddBarber: (barber: { name: string; specialties: string[] }) => Promise<void>;
+  onAddBarber: (barber: {
+    name: string;
+    specialties: string[];
+  }) => Promise<void>;
   onDeleteBarber: (id: string) => Promise<void>;
-  onAddAbsence: (absence: { barberId: string; startAt: string; endAt: string }) => Promise<void>;
+  onAddAbsence: (absence: {
+    barberId: string;
+    startAt: string;
+    endAt: string;
+  }) => Promise<void>;
   onDeleteAbsence: (id: string) => Promise<void>;
   onLogout: () => void;
   adminName: string;
 };
 
-type FilterRange = "today" | "week" | "month";
-
 type ModalTab = "service" | "barber" | "absence";
-
-const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function endOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
-}
-
-function startOfWeek(date: Date) {
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const start = new Date(date);
-  start.setDate(date.getDate() + diff);
-  return startOfDay(start);
-}
-
-function endOfWeek(date: Date) {
-  const start = startOfWeek(date);
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return endOfDay(end);
-}
-
-function startOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-function endOfMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
-}
-
-function isSameDay(a: Date, b: Date) {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
 
 function formatDate(date: Date) {
   return date.toLocaleString("pt-BR");
 }
 
-function formatDateShort(date: Date) {
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
-}
-
-function toIsoDate(date?: Date) {
+function _toIsoDate(date?: Date) {
   return date ? format(date, "yyyy-MM-dd") : "";
 }
 
@@ -89,6 +51,7 @@ export default function AdminDashboard({
   barbers,
   absences,
   onDeleteAppointment,
+  onMoveAppointment,
   onAddService,
   onSetServiceActive,
   onDeleteService,
@@ -99,7 +62,6 @@ export default function AdminDashboard({
   onLogout,
   adminName,
 }: AdminDashboardProps) {
-  const [range, setRange] = useState<FilterRange>("today");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>("service");
 
@@ -119,81 +81,22 @@ export default function AdminDashboard({
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
   const [deleteError, setDeleteError] = useState("");
   const [barberToDelete, setBarberToDelete] = useState<Barber | null>(null);
-  const [absenceToDelete, setAbsenceToDelete] = useState<BarberAbsence | null>(null);
+  const [absenceToDelete, setAbsenceToDelete] = useState<BarberAbsence | null>(
+    null,
+  );
   const [isSavingService, setIsSavingService] = useState(false);
   const [isSavingBarber, setIsSavingBarber] = useState(false);
   const [isSavingAbsence, setIsSavingAbsence] = useState(false);
   const [isDeletingService, setIsDeletingService] = useState(false);
-  const [deletingAppointmentId, setDeletingAppointmentId] = useState<string | null>(null);
   const [deletingBarberId, setDeletingBarberId] = useState<string | null>(null);
-  const [deletingAbsenceId, setDeletingAbsenceId] = useState<string | null>(null);
+  const [deletingAbsenceId, setDeletingAbsenceId] = useState<string | null>(
+    null,
+  );
   const { toast } = useToast();
 
   const barbersById = useMemo(() => {
     return new Map(barbers.map((barber) => [barber.id, barber]));
   }, [barbers]);
-
-  const servicesById = useMemo(() => {
-    return new Map(services.map((service) => [service.id, service]));
-  }, [services]);
-
-  const now = new Date();
-  const rangeStart = useMemo(() => {
-    if (range === "today") return startOfDay(now);
-    if (range === "week") return startOfWeek(now);
-    return startOfMonth(now);
-  }, [range, now]);
-  const rangeEnd = useMemo(() => {
-    if (range === "today") return endOfDay(now);
-    if (range === "week") return endOfWeek(now);
-    return endOfMonth(now);
-  }, [range, now]);
-
-  const filteredAppointments = useMemo(() => {
-    return appointments.filter((appointment) => {
-      const date = new Date(appointment.date);
-      return date >= rangeStart && date <= rangeEnd;
-    });
-  }, [appointments, rangeStart, rangeEnd]);
-
-  const calendarDays = useMemo(() => {
-    if (range === "today") {
-      return [startOfDay(now)];
-    }
-    if (range === "week") {
-      return Array.from({ length: 7 }, (_, index) => {
-        const day = new Date(rangeStart);
-        day.setDate(rangeStart.getDate() + index);
-        return day;
-      });
-    }
-
-    const firstDay = startOfMonth(now);
-    const lastDay = endOfMonth(now);
-    const daysInMonth = lastDay.getDate();
-    const offset = (firstDay.getDay() + 6) % 7;
-    const totalCells = Math.ceil((offset + daysInMonth) / 7) * 7;
-
-    return Array.from({ length: totalCells }, (_, index) => {
-      const dayIndex = index - offset + 1;
-      if (dayIndex < 1 || dayIndex > daysInMonth) {
-        return null;
-      }
-      return new Date(now.getFullYear(), now.getMonth(), dayIndex);
-    });
-  }, [range, now, rangeStart]);
-
-  const appointmentsByDay = useMemo(() => {
-    const map = new Map<string, Appointment[]>();
-    for (const appointment of filteredAppointments) {
-      const date = startOfDay(new Date(appointment.date));
-      const key = date.toISOString();
-      const list = map.get(key) ?? [];
-      list.push(appointment);
-      map.set(key, list);
-    }
-    return map;
-  }, [filteredAppointments]);
 
   const handleAddService = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -224,7 +127,7 @@ export default function AdminDashboard({
       setPrice("");
       setDuration("");
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Erro ao criar serviço",
         description: "Não foi possível salvar o serviço. Tente novamente.",
@@ -263,7 +166,7 @@ export default function AdminDashboard({
       setBarberName("");
       setBarberSpecialties("");
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Erro ao cadastrar barbeiro",
         description: "Não foi possível salvar o barbeiro. Tente novamente.",
@@ -319,7 +222,7 @@ export default function AdminDashboard({
       setAbsenceDate(undefined);
       setAbsenceAllDay(true);
       setIsModalOpen(false);
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Erro ao registrar ausência",
         description: "Não foi possível salvar a ausência. Tente novamente.",
@@ -342,7 +245,7 @@ export default function AdminDashboard({
         variant: "success",
       });
       setServiceToDelete(null);
-    } catch (error) {
+    } catch (_error) {
       setDeleteError("Não foi possível excluir o serviço. Tente novamente.");
       toast({
         title: "Erro ao excluir serviço",
@@ -351,26 +254,6 @@ export default function AdminDashboard({
       });
     } finally {
       setIsDeletingService(false);
-    }
-  };
-
-  const handleDeleteAppointment = async (id: string) => {
-    try {
-      setDeletingAppointmentId(id);
-      await onDeleteAppointment(id);
-      toast({
-        title: "Agendamento excluído",
-        description: "O agendamento foi removido.",
-        variant: "success",
-      });
-    } catch (error) {
-      toast({
-        title: "Erro ao excluir agendamento",
-        description: "Não foi possível excluir o agendamento. Tente novamente.",
-        variant: "error",
-      });
-    } finally {
-      setDeletingAppointmentId(null);
     }
   };
 
@@ -384,7 +267,7 @@ export default function AdminDashboard({
         variant: "success",
       });
       setBarberToDelete(null);
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Erro ao excluir barbeiro",
         description: "Não foi possível excluir o barbeiro. Tente novamente.",
@@ -405,7 +288,7 @@ export default function AdminDashboard({
         variant: "success",
       });
       setAbsenceToDelete(null);
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Erro ao excluir ausência",
         description: "Não foi possível excluir a ausência. Tente novamente.",
@@ -423,16 +306,20 @@ export default function AdminDashboard({
           <p className="text-xs uppercase tracking-[0.3em] text-stone-500 font-semibold">
             Painel Administrativo
           </p>
-          <h2 className="text-3xl font-bold text-stone-100">Bem-vindo, {adminName}</h2>
+          <h2 className="text-3xl font-bold text-stone-100">
+            Bem-vindo, {adminName}
+          </h2>
         </div>
         <div className="flex flex-wrap gap-3">
           <button
+            type="button"
             onClick={() => setIsModalOpen(true)}
             className="h-11 px-6 rounded-full bg-amber-500 text-stone-950 text-xs uppercase tracking-widest font-bold hover:bg-amber-400 transition"
           >
             Novo cadastro
           </button>
           <button
+            type="button"
             onClick={onLogout}
             className="h-11 px-6 rounded-full border border-stone-700 text-stone-100 text-xs uppercase tracking-widest hover:bg-stone-800 transition"
           >
@@ -441,202 +328,33 @@ export default function AdminDashboard({
         </div>
       </header>
 
-      <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h3 className="text-xl font-bold text-stone-100">Agendamentos</h3>
-            <p className="text-xs text-stone-500">Visualização em calendário + lista</p>
-          </div>
-          <div className="flex gap-2">
-            {(["today", "week", "month"] as FilterRange[]).map((option) => (
-              <button
-                key={option}
-                onClick={() => setRange(option)}
-                className={`px-4 py-2 rounded-full border text-[10px] uppercase tracking-widest transition ${
-                  range === option
-                    ? "border-amber-500 text-amber-400"
-                    : "border-stone-700 text-stone-400 hover:bg-stone-800"
-                }`}
-              >
-                {option === "today" ? "Hoje" : option === "week" ? "Semana" : "Mês"}
-              </button>
-            ))}
-          </div>
-        </div>
+      <AdminAppointmentsBoard
+        appointments={appointments}
+        services={services}
+        barbers={barbers}
+        absences={absences}
+        onDeleteAppointment={onDeleteAppointment}
+        onMoveAppointment={onMoveAppointment}
+      />
 
-        <div className="bg-stone-950/60 border border-stone-800 rounded-2xl p-4">
-          <div
-            className={
-              range === "month"
-                ? "grid grid-cols-7 gap-2"
-                : "grid grid-cols-1 md:grid-cols-7 gap-2"
-            }
-          >
-            {range === "month" ? (
-              weekdays.map((label) => (
-                <div key={label} className="text-[10px] uppercase tracking-widest text-stone-500">
-                  {label}
-                </div>
-              ))
-            ) : null}
-
-            {calendarDays.map((day, index) => {
-              if (!day) {
-                return <div key={`empty-${index}`} className="min-h-[80px]" />;
-              }
-
-              const key = startOfDay(day).toISOString();
-              const list = appointmentsByDay.get(key) ?? [];
-              const isToday = isSameDay(day, now);
-
-              return (
-                <div
-                  key={key}
-                  className={`min-h-[96px] rounded-xl border p-3 flex flex-col gap-2 ${
-                    isToday ? "border-amber-500/70 bg-amber-500/10" : "border-stone-800"
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-stone-300 font-semibold">
-                      {range === "month" ? day.getDate() : formatDateShort(day)}
-                    </span>
-                    {list.length > 0 ? (
-                      <span className="text-[10px] uppercase tracking-widest text-amber-400">
-                        {list.length} ag.
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {list.slice(0, 2).map((appointment) => (
-                      <span key={appointment.id} className="text-[11px] text-stone-200">
-                        {appointment.clientName}
-                      </span>
-                    ))}
-                    {list.length > 2 ? (
-                      <span className="text-[10px] text-stone-500">+ {list.length - 2}</span>
-                    ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {filteredAppointments.length === 0 ? (
-            <p className="text-sm text-stone-500">Nenhum agendamento no período.</p>
-          ) : (
-            filteredAppointments.map((appointment) => {
-              const service = servicesById.get(appointment.serviceId);
-              const barber = barbersById.get(appointment.barberId);
-
-              return (
-                <div
-                  key={appointment.id}
-                  className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
-                >
-                  <div className="text-sm font-semibold text-stone-100">
-                    {appointment.clientName}
-                  </div>
-                  <div className="text-xs text-stone-500">
-                    Serviço: {service?.name ?? "Serviço"}
-                  </div>
-                  <div className="text-xs text-stone-500">
-                    Barbeiro: {barber?.name ?? "Barbeiro"}
-                  </div>
-                  <div className="text-xs text-stone-500">
-                    Data: {formatDate(new Date(appointment.date))}
-                  </div>
-                  <div>
-                    <button
-                      onClick={() => handleDeleteAppointment(appointment.id)}
-                      className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
-                      disabled={deletingAppointmentId === appointment.id}
-                    >
-                      {deletingAppointmentId === appointment.id ? "Excluindo..." : "Excluir"}
-                    </button>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </section>
-
-      <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-stone-100">Serviços</h3>
-          <button
-            onClick={() => {
-              setActiveTab("service");
-              setIsModalOpen(true);
-            }}
-            className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
-          >
-            Adicionar serviço
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {services.map((service) => (
-            <div
-              key={service.id}
-              className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-sm font-semibold text-stone-100">{service.name}</div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteError("");
-                    setServiceToDelete(service);
-                  }}
-                  className="h-8 w-8 inline-flex items-center justify-center rounded-full border border-red-500/60 text-red-400 hover:bg-red-500/20 transition"
-                  aria-label={`Excluir ${service.name}`}
-                  title="Excluir serviço"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="text-xs text-stone-500">Descrição: {service.description}</div>
-              <div className="text-xs text-stone-500">
-                Preço: R$ {service.price} • Duração: {service.duration} min
-              </div>
-              <div className="text-[10px] uppercase tracking-widest text-stone-500">
-                {service.isActive ? "Ativo" : "Inativo"}
-              </div>
-              <div>
-                <button
-                  onClick={async () => {
-                    try {
-                      await onSetServiceActive(service.id, !service.isActive);
-                      toast({
-                        title: service.isActive ? "Serviço desativado" : "Serviço ativado",
-                        description: "Status do serviço atualizado.",
-                        variant: "success",
-                      });
-                    } catch (error) {
-                      toast({
-                        title: "Erro ao atualizar serviço",
-                        description: "Não foi possível alterar o status. Tente novamente.",
-                        variant: "error",
-                      });
-                    }
-                  }}
-                  className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
-                >
-                  {service.isActive ? "Desativar" : "Ativar"}
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <ServicesTable
+        services={services}
+        onSetServiceActive={onSetServiceActive}
+        onDeleteClick={(service) => {
+          setDeleteError("");
+          setServiceToDelete(service);
+        }}
+        onAddClick={() => {
+          setActiveTab("service");
+          setIsModalOpen(true);
+        }}
+      />
 
       <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-bold text-stone-100">Barbeiros</h3>
           <button
+            type="button"
             onClick={() => {
               setActiveTab("barber");
               setIsModalOpen(true);
@@ -653,12 +371,15 @@ export default function AdminDashboard({
               key={barber.id}
               className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
             >
-              <div className="text-sm font-semibold text-stone-100">{barber.name}</div>
+              <div className="text-sm font-semibold text-stone-100">
+                {barber.name}
+              </div>
               <div className="text-xs text-stone-500">
                 Especialidades: {barber.specialties.join(", ")}
               </div>
               <div>
                 <button
+                  type="button"
                   onClick={() => {
                     setDeleteError("");
                     setBarberToDelete(barber);
@@ -678,6 +399,7 @@ export default function AdminDashboard({
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-bold text-stone-100">Ausências</h3>
           <button
+            type="button"
             onClick={() => {
               setActiveTab("absence");
               setIsModalOpen(true);
@@ -690,7 +412,9 @@ export default function AdminDashboard({
 
         <div className="space-y-3">
           {absences.length === 0 ? (
-            <p className="text-sm text-stone-500">Nenhuma ausência cadastrada.</p>
+            <p className="text-sm text-stone-500">
+              Nenhuma ausência cadastrada.
+            </p>
           ) : (
             absences.map((absence) => (
               <div
@@ -701,10 +425,12 @@ export default function AdminDashboard({
                   {barbersById.get(absence.barberId)?.name ?? "Barbeiro"}
                 </div>
                 <div className="text-xs text-stone-500">
-                  {formatDate(new Date(absence.startAt))} — {formatDate(new Date(absence.endAt))}
+                  {formatDate(new Date(absence.startAt))} —{" "}
+                  {formatDate(new Date(absence.endAt))}
                 </div>
                 <div>
                   <button
+                    type="button"
                     onClick={() => {
                       setDeleteError("");
                       setAbsenceToDelete(absence);
@@ -712,7 +438,9 @@ export default function AdminDashboard({
                     className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
                     disabled={deletingAbsenceId === absence.id}
                   >
-                    {deletingAbsenceId === absence.id ? "Removendo..." : "Remover"}
+                    {deletingAbsenceId === absence.id
+                      ? "Removendo..."
+                      : "Remover"}
                   </button>
                 </div>
               </div>
@@ -723,11 +451,19 @@ export default function AdminDashboard({
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => setIsModalOpen(false)} />
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click closes dialog. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setIsModalOpen(false)}
+          />
           <div className="relative w-full max-w-lg rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
-              <h4 className="text-lg font-bold text-stone-100">Novo cadastro</h4>
+              <h4 className="text-lg font-bold text-stone-100">
+                Novo cadastro
+              </h4>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
                 className="text-xs uppercase tracking-widest text-stone-400 hover:text-stone-200"
               >
@@ -735,12 +471,15 @@ export default function AdminDashboard({
               </button>
             </div>
             <div className="flex gap-2 mb-6">
-              {([
-                { id: "service", label: "Serviço" },
-                { id: "barber", label: "Barbeiro" },
-                { id: "absence", label: "Ausência" },
-              ] as const).map((tab) => (
+              {(
+                [
+                  { id: "service", label: "Serviço" },
+                  { id: "barber", label: "Barbeiro" },
+                  { id: "absence", label: "Ausência" },
+                ] as const
+              ).map((tab) => (
                 <button
+                  type="button"
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={`flex-1 rounded-full px-4 py-2 text-[10px] uppercase tracking-widest border ${
@@ -794,7 +533,13 @@ export default function AdminDashboard({
                 <button
                   type="submit"
                   className="h-11 rounded-full bg-amber-500 text-stone-950 font-bold uppercase tracking-widest text-xs hover:bg-amber-400 transition"
-                  disabled={!name || !description || !price || !duration || isSavingService}
+                  disabled={
+                    !name ||
+                    !description ||
+                    !price ||
+                    !duration ||
+                    isSavingService
+                  }
                 >
                   {isSavingService ? "Salvando..." : "Salvar serviço"}
                 </button>
@@ -851,7 +596,9 @@ export default function AdminDashboard({
                       className="h-10 justify-start px-4 text-left font-normal text-stone-200"
                       disabled={isSavingAbsence}
                     >
-                      {absenceDate ? format(absenceDate, "dd/MM/yyyy") : "Selecione a data"}
+                      {absenceDate
+                        ? format(absenceDate, "dd/MM/yyyy")
+                        : "Selecione a data"}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="start">
@@ -879,14 +626,18 @@ export default function AdminDashboard({
                     <input
                       type="time"
                       value={absenceStartTime}
-                      onChange={(event) => setAbsenceStartTime(event.target.value)}
+                      onChange={(event) =>
+                        setAbsenceStartTime(event.target.value)
+                      }
                       className="h-10 rounded-xl border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100"
                       disabled={isSavingAbsence}
                     />
                     <input
                       type="time"
                       value={absenceEndTime}
-                      onChange={(event) => setAbsenceEndTime(event.target.value)}
+                      onChange={(event) =>
+                        setAbsenceEndTime(event.target.value)
+                      }
                       className="h-10 rounded-xl border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100"
                       disabled={isSavingAbsence}
                     />
@@ -913,13 +664,17 @@ export default function AdminDashboard({
 
       {serviceToDelete ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click closes dialog. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
           <div
             className="absolute inset-0 bg-black/60"
             onClick={() => setServiceToDelete(null)}
           />
           <div className="relative w-full max-w-md rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-3">
-              <h4 className="text-lg font-bold text-stone-100">Excluir serviço</h4>
+              <h4 className="text-lg font-bold text-stone-100">
+                Excluir serviço
+              </h4>
               <button
                 type="button"
                 onClick={() => setServiceToDelete(null)}
@@ -963,13 +718,17 @@ export default function AdminDashboard({
 
       {barberToDelete ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click closes dialog. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
           <div
             className="absolute inset-0 bg-black/60"
             onClick={() => setBarberToDelete(null)}
           />
           <div className="relative w-full max-w-md rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-3">
-              <h4 className="text-lg font-bold text-stone-100">Remover barbeiro</h4>
+              <h4 className="text-lg font-bold text-stone-100">
+                Remover barbeiro
+              </h4>
               <button
                 type="button"
                 onClick={() => setBarberToDelete(null)}
@@ -980,8 +739,10 @@ export default function AdminDashboard({
             </div>
             <p className="text-sm text-stone-400">
               Tem certeza que deseja remover o barbeiro{" "}
-              <span className="text-stone-100 font-semibold">{barberToDelete.name}</span>? Esta
-              ação remove o barbeiro do banco de dados.
+              <span className="text-stone-100 font-semibold">
+                {barberToDelete.name}
+              </span>
+              ? Esta ação remove o barbeiro do banco de dados.
             </p>
             {deleteError ? (
               <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
@@ -1003,7 +764,9 @@ export default function AdminDashboard({
                 className="h-11 px-6 rounded-full bg-red-500 text-stone-950 text-xs uppercase tracking-widest font-bold hover:bg-red-400 transition"
                 disabled={deletingBarberId === barberToDelete.id}
               >
-                {deletingBarberId === barberToDelete.id ? "Removendo..." : "Remover"}
+                {deletingBarberId === barberToDelete.id
+                  ? "Removendo..."
+                  : "Remover"}
               </button>
             </div>
           </div>
@@ -1012,13 +775,17 @@ export default function AdminDashboard({
 
       {absenceToDelete ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click closes dialog. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
           <div
             className="absolute inset-0 bg-black/60"
             onClick={() => setAbsenceToDelete(null)}
           />
           <div className="relative w-full max-w-md rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-3">
-              <h4 className="text-lg font-bold text-stone-100">Excluir ausência</h4>
+              <h4 className="text-lg font-bold text-stone-100">
+                Excluir ausência
+              </h4>
               <button
                 type="button"
                 onClick={() => setAbsenceToDelete(null)}
@@ -1054,7 +821,9 @@ export default function AdminDashboard({
                 className="h-11 px-6 rounded-full bg-red-500 text-stone-950 text-xs uppercase tracking-widest font-bold hover:bg-red-400 transition"
                 disabled={deletingAbsenceId === absenceToDelete.id}
               >
-                {deletingAbsenceId === absenceToDelete.id ? "Removendo..." : "Excluir"}
+                {deletingAbsenceId === absenceToDelete.id
+                  ? "Removendo..."
+                  : "Excluir"}
               </button>
             </div>
           </div>
