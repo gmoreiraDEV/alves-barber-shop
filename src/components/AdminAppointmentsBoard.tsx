@@ -1,11 +1,34 @@
 "use client";
 
 import { format } from "date-fns";
-import { useMemo, useState } from "react";
+import type { DragEvent, ReactNode } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type { Appointment, Barber, BarberAbsence, Service } from "@/types";
 import { useToast } from "./ui/toast";
 
 type FilterRange = "today" | "week" | "month";
+
+type TimeAxisProps = {
+  slot: string;
+};
+
+type DayHeaderRowProps = {
+  days: Date[];
+};
+
+type TimeGridProps = {
+  children: ReactNode;
+};
+
+type TimeSlotCellProps = {
+  slotLabel?: string;
+  appointments: Appointment[];
+  isOver: boolean;
+  onDragOver: (event: DragEvent<HTMLDivElement>) => void;
+  onDragLeave: () => void;
+  onDrop: () => void;
+  renderAppointment: (appointment: Appointment) => ReactNode;
+};
 
 type AdminAppointmentsBoardProps = {
   appointments: Appointment[];
@@ -93,6 +116,75 @@ function formatDateFull(date: Date) {
 
 function getSlotKey(date: Date) {
   return `${format(date, "yyyy-MM-dd")}|${format(date, "HH:mm")}`;
+}
+
+function TimeAxis({ slot }: TimeAxisProps) {
+  return (
+    <div className="sticky left-0 z-10 flex h-full items-start justify-end border-r border-stone-800 bg-stone-950/95 px-2 pt-2 text-[10px] font-semibold text-stone-500">
+      {slot}
+    </div>
+  );
+}
+
+function DayHeaderRow({ days }: DayHeaderRowProps) {
+  return (
+    <div className="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-800 bg-stone-950/95">
+      <div className="border-r border-stone-800" />
+      {days.map((day) => {
+        const dayKey = format(day, "yyyy-MM-dd");
+        return (
+          <div
+            key={dayKey}
+            className="min-w-[150px] border-r border-stone-800 px-3 py-2 text-center last:border-r-0"
+          >
+            <div className="text-[10px] uppercase tracking-widest text-stone-500">
+              {weekdays[(day.getDay() + 6) % 7]}
+            </div>
+            <div className="text-xs font-semibold text-stone-200">
+              {formatDateShort(day)}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TimeGrid({ children }: TimeGridProps) {
+  return (
+    <div className="overflow-y-auto max-h-[70vh] md:max-h-[520px] scrollbar-premium">
+      {children}
+    </div>
+  );
+}
+
+function TimeSlotCell({
+  slotLabel,
+  appointments,
+  isOver,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+  renderAppointment,
+}: TimeSlotCellProps) {
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: drop interaction handled by HTML drag API.
+    <div
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      className={`min-h-14 border-r border-b border-stone-800 px-2 py-1.5 transition last:border-r-0 ${
+        isOver
+          ? "bg-amber-500/10 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.8)]"
+          : "bg-transparent"
+      }`}
+    >
+      {slotLabel ? (
+        <div className="mb-1 text-[10px] text-stone-500">{slotLabel}</div>
+      ) : null}
+      <div className="space-y-1">{appointments.map(renderAppointment)}</div>
+    </div>
+  );
 }
 
 export default function AdminAppointmentsBoard({
@@ -468,64 +560,100 @@ export default function AdminAppointmentsBoard({
             })}
           </div>
         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-          {weekDays.map((day) => {
-            const dayKey = format(day, "yyyy-MM-dd");
-
-            return (
-              <div
-                key={dayKey}
-                className="rounded-2xl border border-stone-800 bg-stone-950/60 p-3"
-              >
-                <div className="mb-3 text-xs font-semibold text-stone-300">
-                  {formatDateShort(day)}
-                </div>
-                <div className="max-h-[480px] overflow-auto space-y-1">
-                  {slots.map((slot) => {
-                    const slotDate = new Date(day);
-                    slotDate.setHours(0, 0, 0, 0);
-                    slotDate.setMinutes(toMinutes(slot));
-                    const slotKey = getSlotKey(slotDate);
-                    const isOver = hoverTarget === `slot:${slotKey}`;
-                    const slotAppointments =
-                      appointmentsBySlot.get(slotKey) ?? [];
-
-                    return (
-                      // biome-ignore lint/a11y/noStaticElementInteractions: drop interaction handled by HTML drag API.
-                      <div
-                        key={slotKey}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          setHoverTarget(`slot:${slotKey}`);
-                        }}
-                        onDragLeave={() => setHoverTarget(null)}
-                        onDrop={async () => {
-                          await handleDropInSlot(day, slot);
-                          setHoverTarget(null);
-                          setDraggedAppointmentId(null);
-                        }}
-                        className={`rounded-lg border px-2 py-2 min-h-11 transition ${
-                          isOver
-                            ? "border-amber-500 bg-amber-500/10"
-                            : "border-stone-800"
-                        }`}
-                      >
-                        <div className="text-[10px] text-stone-500 mb-1">
-                          {slot}
-                        </div>
-                        <div className="space-y-1">
-                          {slotAppointments.map((appointment) =>
-                            appointmentChip(appointment),
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+      ) : range === "today" ? (
+        <div className="w-full rounded-2xl border border-stone-800 bg-stone-950/60">
+          <div className="grid grid-cols-[72px_1fr] border-b border-stone-800 bg-stone-950/95">
+            <div className="border-r border-stone-800" />
+            <div className="px-3 py-2">
+              <div className="text-[10px] uppercase tracking-widest text-stone-500">
+                Hoje
               </div>
-            );
-          })}
+              <div className="text-xs font-semibold text-stone-200">
+                {formatDateShort(weekDays[0])}
+              </div>
+            </div>
+          </div>
+          <TimeGrid>
+            <div className="grid grid-cols-[72px_1fr] min-w-0">
+              {slots.map((slot) => {
+                const day = weekDays[0];
+                const slotDate = new Date(day);
+                slotDate.setHours(0, 0, 0, 0);
+                slotDate.setMinutes(toMinutes(slot));
+
+                const slotKey = getSlotKey(slotDate);
+                const isOver = hoverTarget === `slot:${slotKey}`;
+                const slotAppointments = appointmentsBySlot.get(slotKey) ?? [];
+
+                return (
+                  <Fragment key={slotKey}>
+                    <TimeAxis slot={slot} />
+                    <TimeSlotCell
+                      appointments={slotAppointments}
+                      isOver={isOver}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setHoverTarget(`slot:${slotKey}`);
+                      }}
+                      onDragLeave={() => setHoverTarget(null)}
+                      onDrop={async () => {
+                        await handleDropInSlot(day, slot);
+                        setHoverTarget(null);
+                        setDraggedAppointmentId(null);
+                      }}
+                      renderAppointment={appointmentChip}
+                    />
+                  </Fragment>
+                );
+              })}
+            </div>
+          </TimeGrid>
+        </div>
+      ) : (
+        <div className="w-full rounded-2xl border border-stone-800 bg-stone-950/60 overflow-hidden">
+          <div className="overflow-x-auto scrollbar-premium">
+            <div className="min-w-[1120px]">
+              <DayHeaderRow days={weekDays} />
+              <TimeGrid>
+                <div className="grid grid-cols-[72px_repeat(7,minmax(0,1fr))]">
+                  {slots.map((slot) => (
+                    <Fragment key={slot}>
+                      <TimeAxis slot={slot} />
+                      {weekDays.map((day) => {
+                        const slotDate = new Date(day);
+                        slotDate.setHours(0, 0, 0, 0);
+                        slotDate.setMinutes(toMinutes(slot));
+
+                        const slotKey = getSlotKey(slotDate);
+                        const isOver = hoverTarget === `slot:${slotKey}`;
+                        const slotAppointments =
+                          appointmentsBySlot.get(slotKey) ?? [];
+
+                        return (
+                          <TimeSlotCell
+                            key={slotKey}
+                            appointments={slotAppointments}
+                            isOver={isOver}
+                            onDragOver={(event) => {
+                              event.preventDefault();
+                              setHoverTarget(`slot:${slotKey}`);
+                            }}
+                            onDragLeave={() => setHoverTarget(null)}
+                            onDrop={async () => {
+                              await handleDropInSlot(day, slot);
+                              setHoverTarget(null);
+                              setDraggedAppointmentId(null);
+                            }}
+                            renderAppointment={appointmentChip}
+                          />
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </div>
+              </TimeGrid>
+            </div>
+          </div>
         </div>
       )}
 
