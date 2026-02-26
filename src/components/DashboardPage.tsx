@@ -154,9 +154,14 @@ export default function DashboardPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(options ?? {}),
     });
+
     if (!response.ok) {
-      throw new Error("Falha ao excluir barbeiro");
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(payload?.error ?? "Falha ao excluir barbeiro");
     }
+
     await loadData();
   };
 

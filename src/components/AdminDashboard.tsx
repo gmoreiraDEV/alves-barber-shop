@@ -323,13 +323,15 @@ export default function AdminDashboard({
       });
       setBarberToDelete(null);
       setReplacementBarberId("");
-    } catch (_error) {
-      setBarberDeleteError(
-        "Não foi possível excluir o barbeiro. Tente novamente.",
-      );
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível excluir o barbeiro. Tente novamente.";
+      setBarberDeleteError(message);
       toast({
         title: "Erro ao excluir barbeiro",
-        description: "Não foi possível excluir o barbeiro. Tente novamente.",
+        description: message,
         variant: "error",
       });
     } finally {

@@ -76,7 +76,7 @@ export async function DELETE(request: Request, { params }: Params) {
   }
 
   const appointmentsCount = await prisma.appointment.count({
-    where: { barberId: id },
+    where: { barberId: id, isActive: true },
   });
 
   if (appointmentsCount > 0 && !replacementBarberId) {
@@ -92,7 +92,7 @@ export async function DELETE(request: Request, { params }: Params) {
   await prisma.$transaction(async (tx) => {
     if (replacementBarberId) {
       await tx.appointment.updateMany({
-        where: { barberId: id },
+        where: { barberId: id, isActive: true },
         data: { barberId: replacementBarberId },
       });
     }
