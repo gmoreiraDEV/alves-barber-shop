@@ -20,17 +20,26 @@ type AdminDashboardProps = {
   onAddService: (service: Omit<Service, "id" | "isActive">) => Promise<void>;
   onSetServiceActive: (id: string, isActive: boolean) => Promise<void>;
   onDeleteService: (id: string) => Promise<void>;
+  onUpdateService: (
+    id: string,
+    service: Omit<Service, "id" | "isActive">,
+  ) => Promise<void>;
   onAddBarber: (barber: {
     name: string;
     specialties: string[];
   }) => Promise<void>;
   onDeleteBarber: (id: string) => Promise<void>;
+  onUpdateBarber: (id: string, barber: Omit<Barber, "id">) => Promise<void>;
   onAddAbsence: (absence: {
     barberId: string;
     startAt: string;
     endAt: string;
   }) => Promise<void>;
   onDeleteAbsence: (id: string) => Promise<void>;
+  onUpdateAbsence: (
+    id: string,
+    absence: Omit<BarberAbsence, "id">,
+  ) => Promise<void>;
   onLogout: () => void;
   adminName: string;
 };
@@ -55,10 +64,13 @@ export default function AdminDashboard({
   onAddService,
   onSetServiceActive,
   onDeleteService,
+  onUpdateService,
   onAddBarber,
   onDeleteBarber,
+  onUpdateBarber,
   onAddAbsence,
   onDeleteAbsence,
+  onUpdateAbsence,
   onLogout,
   adminName,
 }: AdminDashboardProps) {
@@ -88,6 +100,10 @@ export default function AdminDashboard({
   const [isSavingBarber, setIsSavingBarber] = useState(false);
   const [isSavingAbsence, setIsSavingAbsence] = useState(false);
   const [isDeletingService, setIsDeletingService] = useState(false);
+  const [updatingBarberId, setUpdatingBarberId] = useState<string | null>(null);
+  const [updatingAbsenceId, setUpdatingAbsenceId] = useState<string | null>(
+    null,
+  );
   const [deletingBarberId, setDeletingBarberId] = useState<string | null>(null);
   const [deletingAbsenceId, setDeletingAbsenceId] = useState<string | null>(
     null,
@@ -299,6 +315,149 @@ export default function AdminDashboard({
     }
   };
 
+  const handleEditService = async (service: Service) => {
+    const name = window.prompt("Nome do serviço", service.name);
+    if (name === null) return;
+    const description = window.prompt(
+      "Descrição do serviço",
+      service.description,
+    );
+    if (description === null) return;
+    const priceValue = window.prompt("Preço", String(service.price));
+    if (priceValue === null) return;
+    const durationValue = window.prompt(
+      "Duração (min)",
+      String(service.duration),
+    );
+    if (durationValue === null) return;
+
+    const price = Number(priceValue);
+    const duration = Number(durationValue);
+
+    if (
+      !name.trim() ||
+      !description.trim() ||
+      Number.isNaN(price) ||
+      Number.isNaN(duration)
+    ) {
+      toast({
+        title: "Dados inválidos",
+        description: "Preencha os dados corretamente para editar o serviço.",
+        variant: "error",
+      });
+      return;
+    }
+
+    try {
+      await onUpdateService(service.id, {
+        name: name.trim(),
+        description: description.trim(),
+        price,
+        duration,
+      });
+      toast({
+        title: "Serviço atualizado",
+        description: "Dados do serviço atualizados.",
+        variant: "success",
+      });
+    } catch (_error) {
+      toast({
+        title: "Erro ao editar serviço",
+        description: "Não foi possível atualizar o serviço.",
+        variant: "error",
+      });
+    }
+  };
+
+  const handleEditBarber = async (barber: Barber) => {
+    const name = window.prompt("Nome do barbeiro", barber.name);
+    if (name === null) return;
+    const specialtiesValue = window.prompt(
+      "Especialidades (separadas por vírgula)",
+      barber.specialties.join(", "),
+    );
+    if (specialtiesValue === null) return;
+
+    const specialties = specialtiesValue
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+
+    if (!name.trim() || specialties.length === 0) {
+      toast({
+        title: "Dados inválidos",
+        description: "Informe nome e especialidades válidas.",
+        variant: "error",
+      });
+      return;
+    }
+
+    try {
+      setUpdatingBarberId(barber.id);
+      await onUpdateBarber(barber.id, { name: name.trim(), specialties });
+      toast({
+        title: "Barbeiro atualizado",
+        description: "Dados do barbeiro atualizados.",
+        variant: "success",
+      });
+    } catch (_error) {
+      toast({
+        title: "Erro ao editar barbeiro",
+        description: "Não foi possível atualizar o barbeiro.",
+        variant: "error",
+      });
+    } finally {
+      setUpdatingBarberId(null);
+    }
+  };
+
+  const handleEditAbsence = async (absence: BarberAbsence) => {
+    const barberId = window.prompt("ID do barbeiro", absence.barberId);
+    if (barberId === null) return;
+    const startAt = window.prompt("Início (ISO)", absence.startAt);
+    if (startAt === null) return;
+    const endAt = window.prompt("Fim (ISO)", absence.endAt);
+    if (endAt === null) return;
+
+    const start = new Date(startAt);
+    const end = new Date(endAt);
+    if (
+      !barberId.trim() ||
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(end.getTime()) ||
+      end <= start
+    ) {
+      toast({
+        title: "Dados inválidos",
+        description: "Informe barbeiro e intervalo válidos para ausência.",
+        variant: "error",
+      });
+      return;
+    }
+
+    try {
+      setUpdatingAbsenceId(absence.id);
+      await onUpdateAbsence(absence.id, {
+        barberId: barberId.trim(),
+        startAt: start.toISOString(),
+        endAt: end.toISOString(),
+      });
+      toast({
+        title: "Ausência atualizada",
+        description: "Ausência atualizada com sucesso.",
+        variant: "success",
+      });
+    } catch (_error) {
+      toast({
+        title: "Erro ao editar ausência",
+        description: "Não foi possível atualizar a ausência.",
+        variant: "error",
+      });
+    } finally {
+      setUpdatingAbsenceId(null);
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-12 flex flex-col gap-8">
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -340,6 +499,7 @@ export default function AdminDashboard({
       <ServicesTable
         services={services}
         onSetServiceActive={onSetServiceActive}
+        onEditClick={handleEditService}
         onDeleteClick={(service) => {
           setDeleteError("");
           setServiceToDelete(service);
@@ -377,7 +537,15 @@ export default function AdminDashboard({
               <div className="text-xs text-stone-500">
                 Especialidades: {barber.specialties.join(", ")}
               </div>
-              <div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handleEditBarber(barber)}
+                  className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
+                  disabled={updatingBarberId === barber.id}
+                >
+                  {updatingBarberId === barber.id ? "Salvando..." : "Editar"}
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -428,7 +596,17 @@ export default function AdminDashboard({
                   {formatDate(new Date(absence.startAt))} —{" "}
                   {formatDate(new Date(absence.endAt))}
                 </div>
-                <div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleEditAbsence(absence)}
+                    className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
+                    disabled={updatingAbsenceId === absence.id}
+                  >
+                    {updatingAbsenceId === absence.id
+                      ? "Salvando..."
+                      : "Editar"}
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
