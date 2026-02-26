@@ -28,7 +28,10 @@ type AdminDashboardProps = {
     name: string;
     specialties: string[];
   }) => Promise<void>;
-  onDeleteBarber: (id: string) => Promise<void>;
+  onDeleteBarber: (
+    id: string,
+    options?: { replacementBarberId?: string },
+  ) => Promise<void>;
   onUpdateBarber: (id: string, barber: Omit<Barber, "id">) => Promise<void>;
   onAddAbsence: (absence: {
     barberId: string;
@@ -92,7 +95,9 @@ export default function AdminDashboard({
   const [modalError, setModalError] = useState("");
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
   const [deleteError, setDeleteError] = useState("");
+  const [barberDeleteError, setBarberDeleteError] = useState("");
   const [barberToDelete, setBarberToDelete] = useState<Barber | null>(null);
+  const [replacementBarberId, setReplacementBarberId] = useState("");
   const [absenceToDelete, setAbsenceToDelete] = useState<BarberAbsence | null>(
     null,
   );
@@ -113,6 +118,26 @@ export default function AdminDashboard({
   const barbersById = useMemo(() => {
     return new Map(barbers.map((barber) => [barber.id, barber]));
   }, [barbers]);
+
+  const appointmentsCountByBarber = useMemo(() => {
+    const countByBarber = new Map<string, number>();
+    for (const appointment of appointments) {
+      countByBarber.set(
+        appointment.barberId,
+        (countByBarber.get(appointment.barberId) ?? 0) + 1,
+      );
+    }
+
+    return countByBarber;
+  }, [appointments]);
+
+  const replacementBarberOptions = useMemo(() => {
+    if (!barberToDelete) {
+      return [];
+    }
+
+    return barbers.filter((barber) => barber.id !== barberToDelete.id);
+  }, [barberToDelete, barbers]);
 
   const handleAddService = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -274,19 +299,39 @@ export default function AdminDashboard({
   };
 
   const handleDeleteBarber = async (id: string) => {
+    const hasAppointments = (appointmentsCountByBarber.get(id) ?? 0) > 0;
+
+    if (hasAppointments && !replacementBarberId) {
+      setBarberDeleteError(
+        "Selecione quem vai assumir os atendimentos antes de excluir.",
+      );
+      return;
+    }
+
     try {
       setDeletingBarberId(id);
-      await onDeleteBarber(id);
+      setBarberDeleteError("");
+      await onDeleteBarber(id, {
+        replacementBarberId: hasAppointments ? replacementBarberId : undefined,
+      });
       toast({
         title: "Barbeiro removido",
-        description: "O barbeiro foi excluído com sucesso.",
+        description: hasAppointments
+          ? "Os atendimentos foram transferidos e o barbeiro foi excluído."
+          : "O barbeiro foi excluído com sucesso.",
         variant: "success",
       });
       setBarberToDelete(null);
-    } catch (_error) {
+      setReplacementBarberId("");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Não foi possível excluir o barbeiro. Tente novamente.";
+      setBarberDeleteError(message);
       toast({
         title: "Erro ao excluir barbeiro",
-        description: "Não foi possível excluir o barbeiro. Tente novamente.",
+        description: message,
         variant: "error",
       });
     } finally {
@@ -550,6 +595,8 @@ export default function AdminDashboard({
                   type="button"
                   onClick={() => {
                     setDeleteError("");
+                    setBarberDeleteError("");
+                    setReplacementBarberId("");
                     setBarberToDelete(barber);
                   }}
                   className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
@@ -900,7 +947,11 @@ export default function AdminDashboard({
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
           <div
             className="absolute inset-0 bg-black/60"
-            onClick={() => setBarberToDelete(null)}
+            onClick={() => {
+              setBarberToDelete(null);
+              setBarberDeleteError("");
+              setReplacementBarberId("");
+            }}
           />
           <div className="relative w-full max-w-md rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4 mb-3">
@@ -909,7 +960,11 @@ export default function AdminDashboard({
               </h4>
               <button
                 type="button"
-                onClick={() => setBarberToDelete(null)}
+                onClick={() => {
+                  setBarberToDelete(null);
+                  setBarberDeleteError("");
+                  setReplacementBarberId("");
+                }}
                 className="text-xs uppercase tracking-widest text-stone-400 hover:text-stone-200"
               >
                 Fechar
@@ -922,15 +977,44 @@ export default function AdminDashboard({
               </span>
               ? Esta ação remove o barbeiro do banco de dados.
             </p>
-            {deleteError ? (
+            {(appointmentsCountByBarber.get(barberToDelete.id) ?? 0) > 0 ? (
+              <div className="mt-4 space-y-3">
+                <p className="text-sm text-amber-300">
+                  Este barbeiro possui{" "}
+                  {appointmentsCountByBarber.get(barberToDelete.id) ?? 0}{" "}
+                  agendamento(s). Selecione quem vai assumir os atendimentos
+                  antes da exclusão.
+                </p>
+                <select
+                  value={replacementBarberId}
+                  onChange={(event) =>
+                    setReplacementBarberId(event.target.value)
+                  }
+                  className="w-full rounded-xl border border-stone-700 bg-stone-900 px-3 py-2 text-sm text-stone-100"
+                  disabled={deletingBarberId === barberToDelete.id}
+                >
+                  <option value="">Selecione o novo barbeiro</option>
+                  {replacementBarberOptions.map((barber) => (
+                    <option key={barber.id} value={barber.id}>
+                      {barber.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
+            {barberDeleteError ? (
               <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                {deleteError}
+                {barberDeleteError}
               </div>
             ) : null}
             <div className="mt-6 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => setBarberToDelete(null)}
+                onClick={() => {
+                  setBarberToDelete(null);
+                  setBarberDeleteError("");
+                  setReplacementBarberId("");
+                }}
                 className="h-11 px-6 rounded-full border border-stone-700 text-stone-100 text-xs uppercase tracking-widest hover:bg-stone-800 transition"
                 disabled={deletingBarberId === barberToDelete.id}
               >

@@ -145,11 +145,23 @@ export default function DashboardPage() {
     await loadData();
   };
 
-  const handleDeleteBarber = async (id: string) => {
-    const response = await fetch(`/api/barbers/${id}`, { method: "DELETE" });
+  const handleDeleteBarber = async (
+    id: string,
+    options?: { replacementBarberId?: string },
+  ) => {
+    const response = await fetch(`/api/barbers/${id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options ?? {}),
+    });
+
     if (!response.ok) {
-      throw new Error("Falha ao excluir barbeiro");
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(payload?.error ?? "Falha ao excluir barbeiro");
     }
+
     await loadData();
   };
 
