@@ -6,7 +6,7 @@
     "dev": "next dev",
     "prebuild": "prisma generate",
     "build": "next build",
-    "start": "next start",
+    "start": "sh -c 'if [ \"$NODE_ENV\" = \"production\" ]; then echo \"Running Prisma migrations\"; prisma migrate deploy; else echo \"Skipping Prisma migrations (NODE_ENV=$NODE_ENV)\"; fi && next start'",
     "lint": "biome check",
     "format": "biome format --write"
   },
