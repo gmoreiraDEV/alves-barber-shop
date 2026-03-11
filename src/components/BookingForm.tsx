@@ -1,6 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { Appointment, Barber, BarberAbsence, Service } from "../types";
 import { Button } from "./ui/button";
@@ -36,6 +37,14 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
 }
 
+function SelectArrow() {
+  return (
+    <span className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-stone-500">
+      <ChevronDown className="h-4 w-4" />
+    </span>
+  );
+}
+
 export default function BookingForm({
   services,
   barbers,
@@ -60,6 +69,8 @@ export default function BookingForm({
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { toast } = useToast();
+  const selectClassName =
+    "h-11 w-full appearance-none rounded-xl border border-stone-700 bg-stone-950 px-4 pr-11 text-sm text-stone-100";
 
   const selectedService = useMemo(
     () => bookableServices.find((service) => service.id === serviceId),
@@ -321,19 +332,22 @@ export default function BookingForm({
           >
             Serviço
           </label>
-          <select
-            id="booking-service"
-            value={serviceId}
-            onChange={(event) => setServiceId(event.target.value)}
-            className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
-            disabled={isBookingDisabled || isSubmitting}
-          >
-            {bookableServices.map((service) => (
-              <option key={service.id} value={service.id}>
-                {service.name} • R$ {service.price}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              id="booking-service"
+              value={serviceId}
+              onChange={(event) => setServiceId(event.target.value)}
+              className={selectClassName}
+              disabled={isBookingDisabled || isSubmitting}
+            >
+              {bookableServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name} • R$ {service.price}
+                </option>
+              ))}
+            </select>
+            <SelectArrow />
+          </div>
           {selectedService ? (
             <span className="text-xs text-stone-500">
               {selectedService.description}
@@ -348,19 +362,22 @@ export default function BookingForm({
           >
             Barbeiro {selectedBarber ? `• ${selectedBarber.name}` : ""}
           </label>
-          <select
-            id="booking-barber"
-            value={barberId}
-            onChange={(event) => setBarberId(event.target.value)}
-            className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
-            disabled={isBookingDisabled || isSubmitting}
-          >
-            {availableBarbers.map((barber) => (
-              <option key={barber.id} value={barber.id}>
-                {barber.name}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              id="booking-barber"
+              value={barberId}
+              onChange={(event) => setBarberId(event.target.value)}
+              className={selectClassName}
+              disabled={isBookingDisabled || isSubmitting}
+            >
+              {availableBarbers.map((barber) => (
+                <option key={barber.id} value={barber.id}>
+                  {barber.name}
+                </option>
+              ))}
+            </select>
+            <SelectArrow />
+          </div>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -376,7 +393,7 @@ export default function BookingForm({
                 id="booking-date"
                 type="button"
                 variant="outline"
-                className="h-11 justify-start px-4 text-left font-normal text-stone-200"
+                className="h-11 w-full justify-start px-4 text-left font-normal text-stone-100 bg-stone-950 rounded-xl border border-stone-700 hover:bg-stone-800/80 hover:text-stone-100"
                 disabled={isBookingDisabled || isSubmitting}
               >
                 {selectedDate
@@ -389,7 +406,6 @@ export default function BookingForm({
                 mode="single"
                 selected={selectedDate}
                 onSelect={setSelectedDate}
-                initialFocus
               />
             </PopoverContent>
           </Popover>
@@ -402,21 +418,24 @@ export default function BookingForm({
           >
             Horário
           </label>
-          <select
-            id="booking-time"
-            value={time}
-            onChange={(event) => setTime(event.target.value)}
-            className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
-            disabled={
-              isBookingDisabled || availableSlots.length === 0 || isSubmitting
-            }
-          >
-            {availableSlots.map((slot) => (
-              <option key={slot} value={slot}>
-                {slot}
-              </option>
-            ))}
-          </select>
+          <div className="relative">
+            <select
+              id="booking-time"
+              value={time}
+              onChange={(event) => setTime(event.target.value)}
+              className={selectClassName}
+              disabled={
+                isBookingDisabled || availableSlots.length === 0 || isSubmitting
+              }
+            >
+              {availableSlots.map((slot) => (
+                <option key={slot} value={slot}>
+                  {slot}
+                </option>
+              ))}
+            </select>
+            <SelectArrow />
+          </div>
           {selectedDate && availableSlots.length === 0 ? (
             <span className="text-xs text-red-400">
               Não há horários disponíveis para esse barbeiro/data.

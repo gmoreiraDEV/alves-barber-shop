@@ -32,7 +32,7 @@ function CalendarDayButton({
   return (
     <Button
       variant="ghost"
-      size="icon"
+      size="icon-sm"
       data-day={day.date.toLocaleDateString(locale?.code)}
       data-selected={modifiers.selected}
       data-today={modifiers.today}
@@ -41,7 +41,7 @@ function CalendarDayButton({
       data-range-start={modifiers.range_start}
       data-range-end={modifiers.range_end}
       className={cn(
-        "size-[var(--cell-size)] rounded-[var(--cell-radius)] text-sm font-medium text-stone-200",
+        "mx-auto size-(--cell-size) rounded-(--cell-radius) text-sm font-medium text-stone-200 transition-colors",
         "hover:bg-stone-800/70 hover:text-stone-100",
         "data-[selected=true]:bg-amber-500/90 data-[selected=true]:text-stone-950",
         "data-[today=true]:border data-[today=true]:border-amber-500",
@@ -60,6 +60,8 @@ export function Calendar({
   classNames,
   showOutsideDays = true,
   captionLayout = "label",
+  navLayout = "around",
+  fixedWeeks = true,
   buttonVariant = "ghost",
   locale,
   formatters,
@@ -72,38 +74,55 @@ export function Calendar({
     <DayPicker
       showOutsideDays={showOutsideDays}
       captionLayout={captionLayout}
+      navLayout={navLayout}
+      fixedWeeks={fixedWeeks}
       locale={locale}
       className={cn(
-        "rounded-2xl border border-stone-800/80 bg-stone-950/95 p-3 text-stone-100",
-        "[--cell-size:2.4rem] [--cell-radius:999px]",
+        "w-full min-w-70 max-w-[20rem] rounded-[1.75rem] border border-stone-800/80 bg-stone-950/95 p-3.5 text-stone-100 shadow-2xl sm:min-w-76 sm:p-4",
+        "[--cell-size:2.25rem] [--cell-radius:0.95rem] sm:[--cell-size:2.6rem]",
         className,
       )}
       classNames={{
         ...defaultClassNames,
-        months: "flex flex-col gap-4 sm:flex-row sm:gap-6",
-        month: "space-y-4",
-        caption: "flex items-center justify-between gap-2",
-        caption_label: "text-sm font-semibold text-stone-200",
-        nav: "flex items-center gap-1",
-        nav_button: cn(
-          "h-8 w-8 rounded-full border border-stone-800 text-stone-300",
+        root: "w-full",
+        months: "w-full",
+        month:
+          "grid w-full grid-cols-[2.25rem_1fr_2.25rem] items-center gap-y-3 sm:grid-cols-[2.5rem_1fr_2.5rem]",
+        month_caption:
+          "col-start-2 row-start-1 flex items-center justify-center px-2 text-center",
+        caption_label: "text-sm font-semibold text-stone-200 whitespace-nowrap",
+        nav: "flex items-center justify-between",
+        button_previous: cn(
+          "col-start-1 row-start-1",
+          "inline-flex size-9 items-center justify-center rounded-full border border-stone-800/90 bg-stone-900/80 text-stone-300 shadow-sm",
           "hover:bg-stone-800/70 hover:text-stone-100",
           "focus-visible:ring-2 focus-visible:ring-amber-400/70",
+          buttonVariant === "outline" ? "border-stone-700 bg-stone-950" : "",
         ),
-        table: "w-full border-collapse",
-        head_row: "grid grid-cols-7",
-        head_cell:
-          "h-8 text-center text-[10px] uppercase tracking-widest text-stone-500",
-        row: "mt-2 grid grid-cols-7",
-        cell: "h-[var(--cell-size)] w-[var(--cell-size)] place-self-center text-center",
-        day: "flex items-center justify-center",
-        day_selected: "bg-amber-500/90 text-stone-950",
-        day_today: "border border-amber-500",
-        day_outside: "text-stone-600",
-        day_disabled: "text-stone-700 opacity-50",
-        day_range_start: "rounded-l-[var(--cell-radius)]",
-        day_range_end: "rounded-r-[var(--cell-radius)]",
-        day_range_middle: "bg-stone-800/50 text-stone-100",
+        button_next: cn(
+          "col-start-3 row-start-1",
+          "inline-flex size-9 items-center justify-center rounded-full border border-stone-800/90 bg-stone-900/80 text-stone-300 shadow-sm",
+          "hover:bg-stone-800/70 hover:text-stone-100",
+          "focus-visible:ring-2 focus-visible:ring-amber-400/70",
+          buttonVariant === "outline" ? "border-stone-700 bg-stone-950" : "",
+        ),
+        chevron: "h-4 w-4",
+        month_grid:
+          "col-span-3 w-full table-fixed border-separate border-spacing-y-1.5",
+        weekdays: "text-center",
+        weekday:
+          "pb-1 text-center text-[0.65rem] font-semibold uppercase tracking-[0.24em] text-stone-500 sm:text-[0.7rem]",
+        weeks: "w-full",
+        week: "w-full",
+        day: "h-[calc(var(--cell-size)+0.35rem)] p-0 text-center align-middle",
+        day_button: "mx-auto",
+        selected: "text-stone-950",
+        today: "font-semibold text-stone-100",
+        outside: "text-stone-600",
+        disabled: "opacity-50",
+        range_start: "rounded-l-[var(--cell-radius)] bg-stone-800/40",
+        range_end: "rounded-r-[var(--cell-radius)] bg-stone-800/40",
+        range_middle: "bg-stone-800/50 text-stone-100",
         ...classNames,
       }}
       components={{
