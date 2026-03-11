@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { useMemo, useState } from "react";
 import type { Appointment, Barber, BarberAbsence, Service } from "../types";
 import AdminAppointmentsBoard from "./AdminAppointmentsBoard";
+import BarberServiceMultiSelect from "./BarberServiceMultiSelect";
 import ServicesTable from "./ServicesTable";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -26,13 +27,19 @@ type AdminDashboardProps = {
   ) => Promise<void>;
   onAddBarber: (barber: {
     name: string;
-    specialties: string[];
+    serviceIds: string[];
   }) => Promise<void>;
   onDeleteBarber: (
     id: string,
     options?: { replacementBarberId?: string },
   ) => Promise<void>;
-  onUpdateBarber: (id: string, barber: Omit<Barber, "id">) => Promise<void>;
+  onUpdateBarber: (
+    id: string,
+    barber: {
+      name: string;
+      serviceIds: string[];
+    },
+  ) => Promise<void>;
   onAddAbsence: (absence: {
     barberId: string;
     startAt: string;
@@ -85,7 +92,8 @@ export default function AdminDashboard({
   const [price, setPrice] = useState("");
   const [duration, setDuration] = useState("");
   const [barberName, setBarberName] = useState("");
-  const [barberSpecialties, setBarberSpecialties] = useState("");
+  const [barberServiceIds, setBarberServiceIds] = useState<string[]>([]);
+  const [editingBarberId, setEditingBarberId] = useState<string | null>(null);
 
   const [absenceBarberId, setAbsenceBarberId] = useState("");
   const [absenceDate, setAbsenceDate] = useState<Date | undefined>(undefined);
@@ -105,7 +113,6 @@ export default function AdminDashboard({
   const [isSavingBarber, setIsSavingBarber] = useState(false);
   const [isSavingAbsence, setIsSavingAbsence] = useState(false);
   const [isDeletingService, setIsDeletingService] = useState(false);
-  const [updatingBarberId, setUpdatingBarberId] = useState<string | null>(null);
   const [updatingAbsenceId, setUpdatingAbsenceId] = useState<string | null>(
     null,
   );
@@ -114,6 +121,10 @@ export default function AdminDashboard({
     null,
   );
   const { toast } = useToast();
+
+  const servicesById = useMemo(() => {
+    return new Map(services.map((service) => [service.id, service]));
+  }, [services]);
 
   const barbersById = useMemo(() => {
     return new Map(barbers.map((barber) => [barber.id, barber]));
@@ -138,6 +149,34 @@ export default function AdminDashboard({
 
     return barbers.filter((barber) => barber.id !== barberToDelete.id);
   }, [barberToDelete, barbers]);
+
+  const resetBarberForm = () => {
+    setBarberName("");
+    setBarberServiceIds([]);
+    setEditingBarberId(null);
+  };
+
+  const openCreateBarberModal = () => {
+    resetBarberForm();
+    setModalError("");
+    setActiveTab("barber");
+    setIsModalOpen(true);
+  };
+
+  const openEditBarberModal = (barber: Barber) => {
+    setEditingBarberId(barber.id);
+    setBarberName(barber.name);
+    setBarberServiceIds(barber.serviceIds);
+    setModalError("");
+    setActiveTab("barber");
+    setIsModalOpen(true);
+  };
+
+  const getBarberServiceNames = (barber: Barber) => {
+    return barber.serviceIds
+      .map((serviceId) => servicesById.get(serviceId)?.name)
+      .filter((serviceName): serviceName is string => Boolean(serviceName));
+  };
 
   const handleAddService = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -182,35 +221,44 @@ export default function AdminDashboard({
   const handleAddBarber = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!barberName || !barberSpecialties) {
-      setModalError("Preencha nome e especialidades.");
+    if (!barberName.trim()) {
+      setModalError("Preencha o nome do barbeiro.");
       return;
     }
 
     try {
       setIsSavingBarber(true);
       setModalError("");
-      await onAddBarber({
-        name: barberName,
-        specialties: barberSpecialties
-          .split(",")
-          .map((item) => item.trim())
-          .filter(Boolean),
-      });
+
+      const payload = {
+        name: barberName.trim(),
+        serviceIds: barberServiceIds,
+      };
+
+      if (editingBarberId) {
+        await onUpdateBarber(editingBarberId, payload);
+      } else {
+        await onAddBarber(payload);
+      }
 
       toast({
-        title: "Barbeiro cadastrado",
-        description: "O barbeiro foi adicionado com sucesso.",
+        title: editingBarberId ? "Barbeiro atualizado" : "Barbeiro cadastrado",
+        description: editingBarberId
+          ? "Os serviços do barbeiro foram atualizados."
+          : "O barbeiro foi adicionado com sucesso.",
         variant: "success",
       });
 
-      setBarberName("");
-      setBarberSpecialties("");
+      resetBarberForm();
       setIsModalOpen(false);
     } catch (_error) {
       toast({
-        title: "Erro ao cadastrar barbeiro",
-        description: "Não foi possível salvar o barbeiro. Tente novamente.",
+        title: editingBarberId
+          ? "Erro ao atualizar barbeiro"
+          : "Erro ao cadastrar barbeiro",
+        description: editingBarberId
+          ? "Não foi possível atualizar os serviços do barbeiro."
+          : "Não foi possível salvar o barbeiro. Tente novamente.",
         variant: "error",
       });
     } finally {
@@ -414,48 +462,6 @@ export default function AdminDashboard({
     }
   };
 
-  const handleEditBarber = async (barber: Barber) => {
-    const name = window.prompt("Nome do barbeiro", barber.name);
-    if (name === null) return;
-    const specialtiesValue = window.prompt(
-      "Especialidades (separadas por vírgula)",
-      barber.specialties.join(", "),
-    );
-    if (specialtiesValue === null) return;
-
-    const specialties = specialtiesValue
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-
-    if (!name.trim() || specialties.length === 0) {
-      toast({
-        title: "Dados inválidos",
-        description: "Informe nome e especialidades válidas.",
-        variant: "error",
-      });
-      return;
-    }
-
-    try {
-      setUpdatingBarberId(barber.id);
-      await onUpdateBarber(barber.id, { name: name.trim(), specialties });
-      toast({
-        title: "Barbeiro atualizado",
-        description: "Dados do barbeiro atualizados.",
-        variant: "success",
-      });
-    } catch (_error) {
-      toast({
-        title: "Erro ao editar barbeiro",
-        description: "Não foi possível atualizar o barbeiro.",
-        variant: "error",
-      });
-    } finally {
-      setUpdatingBarberId(null);
-    }
-  };
-
   const handleEditAbsence = async (absence: BarberAbsence) => {
     const barberId = window.prompt("ID do barbeiro", absence.barberId);
     if (barberId === null) return;
@@ -517,7 +523,10 @@ export default function AdminDashboard({
         <div className="flex flex-wrap gap-3">
           <button
             type="button"
-            onClick={() => setIsModalOpen(true)}
+            onClick={() => {
+              resetBarberForm();
+              setIsModalOpen(true);
+            }}
             className="h-11 px-6 rounded-full bg-amber-500 text-stone-950 text-xs uppercase tracking-widest font-bold hover:bg-amber-400 transition"
           >
             Novo cadastro
@@ -550,6 +559,7 @@ export default function AdminDashboard({
           setServiceToDelete(service);
         }}
         onAddClick={() => {
+          resetBarberForm();
           setActiveTab("service");
           setIsModalOpen(true);
         }}
@@ -560,10 +570,7 @@ export default function AdminDashboard({
           <h3 className="text-xl font-bold text-stone-100">Barbeiros</h3>
           <button
             type="button"
-            onClick={() => {
-              setActiveTab("barber");
-              setIsModalOpen(true);
-            }}
+            onClick={openCreateBarberModal}
             className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
           >
             Adicionar barbeiro
@@ -580,16 +587,17 @@ export default function AdminDashboard({
                 {barber.name}
               </div>
               <div className="text-xs text-stone-500">
-                Especialidades: {barber.specialties.join(", ")}
+                {getBarberServiceNames(barber).length > 0
+                  ? `Serviços: ${getBarberServiceNames(barber).join(", ")}`
+                  : "Nenhum serviço vinculado."}
               </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => void handleEditBarber(barber)}
+                  onClick={() => openEditBarberModal(barber)}
                   className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
-                  disabled={updatingBarberId === barber.id}
                 >
-                  {updatingBarberId === barber.id ? "Salvando..." : "Editar"}
+                  Editar
                 </button>
                 <button
                   type="button"
@@ -616,6 +624,7 @@ export default function AdminDashboard({
           <button
             type="button"
             onClick={() => {
+              resetBarberForm();
               setActiveTab("absence");
               setIsModalOpen(true);
             }}
@@ -680,16 +689,24 @@ export default function AdminDashboard({
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
           <div
             className="absolute inset-0 bg-black/60"
-            onClick={() => setIsModalOpen(false)}
+            onClick={() => {
+              resetBarberForm();
+              setIsModalOpen(false);
+            }}
           />
           <div className="relative w-full max-w-lg rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h4 className="text-lg font-bold text-stone-100">
-                Novo cadastro
+                {activeTab === "barber" && editingBarberId
+                  ? "Editar barbeiro"
+                  : "Novo cadastro"}
               </h4>
               <button
                 type="button"
-                onClick={() => setIsModalOpen(false)}
+                onClick={() => {
+                  resetBarberForm();
+                  setIsModalOpen(false);
+                }}
                 className="text-xs uppercase tracking-widest text-stone-400 hover:text-stone-200"
               >
                 Fechar
@@ -706,7 +723,12 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (tab.id !== "barber") {
+                      resetBarberForm();
+                    }
+                    setActiveTab(tab.id);
+                  }}
                   className={`flex-1 rounded-full px-4 py-2 text-[10px] uppercase tracking-widest border ${
                     activeTab === tab.id
                       ? "border-amber-500 text-amber-400"
@@ -780,19 +802,26 @@ export default function AdminDashboard({
                   placeholder="Nome do barbeiro"
                   disabled={isSavingBarber}
                 />
-                <input
-                  value={barberSpecialties}
-                  onChange={(event) => setBarberSpecialties(event.target.value)}
-                  className="h-10 rounded-xl border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100"
-                  placeholder="Especialidades (separadas por vírgula)"
+                <BarberServiceMultiSelect
+                  services={services}
+                  selectedIds={barberServiceIds}
+                  onChange={setBarberServiceIds}
                   disabled={isSavingBarber}
                 />
+                <p className="text-xs text-stone-400">
+                  Opcional no cadastro. Se nenhum serviço for vinculado, o
+                  barbeiro não aparece no agendamento online.
+                </p>
                 <button
                   type="submit"
                   className="h-11 rounded-full bg-amber-500 text-stone-950 font-bold uppercase tracking-widest text-xs hover:bg-amber-400 transition"
-                  disabled={!barberName || !barberSpecialties || isSavingBarber}
+                  disabled={!barberName.trim() || isSavingBarber}
                 >
-                  {isSavingBarber ? "Salvando..." : "Salvar barbeiro"}
+                  {isSavingBarber
+                    ? "Salvando..."
+                    : editingBarberId
+                      ? "Salvar alterações"
+                      : "Salvar barbeiro"}
                 </button>
               </form>
             ) : null}

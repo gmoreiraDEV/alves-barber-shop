@@ -4,7 +4,7 @@ import { useUser } from "@stackframe/stack";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { type LoadResult, loadAdminData } from "@/lib/app-data";
-import type { Barber, BarberAbsence, Service } from "@/types";
+import type { BarberAbsence, Service } from "@/types";
 import AdminDashboard from "./AdminDashboard";
 import AdminLogin from "./AdminLogin";
 
@@ -118,7 +118,7 @@ export default function DashboardPage() {
 
   const handleAddBarber = async (barber: {
     name: string;
-    specialties: string[];
+    serviceIds: string[];
   }) => {
     const response = await fetch("/api/barbers", {
       method: "POST",
@@ -132,7 +132,13 @@ export default function DashboardPage() {
     await loadData();
   };
 
-  const handleUpdateBarber = async (id: string, barber: Omit<Barber, "id">) => {
+  const handleUpdateBarber = async (
+    id: string,
+    barber: {
+      name: string;
+      serviceIds: string[];
+    },
+  ) => {
     const response = await fetch(`/api/barbers/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },

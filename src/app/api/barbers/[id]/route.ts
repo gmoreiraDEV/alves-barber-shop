@@ -4,6 +4,43 @@ import { stackServerApp } from "@/stack/server";
 
 type Params = { params: Promise<{ id: string }> };
 
+function normalizeServiceIds(input: unknown) {
+  if (!Array.isArray(input)) return [];
+
+  return Array.from(
+    new Set(
+      input
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+}
+
+async function allServicesExist(serviceIds: string[]) {
+  if (serviceIds.length === 0) return true;
+
+  const count = await prisma.service.count({
+    where: { id: { in: serviceIds } },
+  });
+
+  return count === serviceIds.length;
+}
+
+function serializeBarber(barber: {
+  id: string;
+  name: string;
+  specialties: string[];
+  serviceLinks: { serviceId: string }[];
+}) {
+  return {
+    id: barber.id,
+    name: barber.name,
+    specialties: barber.specialties,
+    serviceIds: barber.serviceLinks.map((link) => link.serviceId),
+  };
+}
+
 export async function PATCH(request: Request, { params }: Params) {
   const { id } = await params;
   const user = await stackServerApp.getUser({ or: "return-null" });
@@ -12,34 +49,60 @@ export async function PATCH(request: Request, { params }: Params) {
   }
 
   const body = await request.json();
-  const { name, specialties } = body;
+  const hasName = Object.hasOwn(body, "name");
+  const hasServiceIds = Object.hasOwn(body, "serviceIds");
 
-  const updateData: {
-    name?: string;
-    specialties?: string[];
-  } = {};
-
-  if (typeof name === "string") {
-    updateData.name = name;
-  }
-
-  if (
-    Array.isArray(specialties) &&
-    specialties.every((item) => typeof item === "string")
-  ) {
-    updateData.specialties = specialties;
-  }
-
-  if (Object.keys(updateData).length === 0) {
+  if (!hasName && !hasServiceIds) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const barber = await prisma.barber.update({
-    where: { id },
-    data: updateData,
+  const nextName = typeof body.name === "string" ? body.name.trim() : "";
+  if (hasName && !nextName) {
+    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  }
+
+  if (hasServiceIds && !Array.isArray(body.serviceIds)) {
+    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  }
+
+  const serviceIds = normalizeServiceIds(body.serviceIds);
+  if (hasServiceIds && !(await allServicesExist(serviceIds))) {
+    return NextResponse.json({ error: "Invalid services" }, { status: 400 });
+  }
+
+  const barber = await prisma.$transaction(async (tx) => {
+    await tx.barber.update({
+      where: { id },
+      data: hasName ? { name: nextName } : {},
+    });
+
+    if (hasServiceIds) {
+      await tx.barberService.deleteMany({
+        where: { barberId: id },
+      });
+
+      if (serviceIds.length > 0) {
+        await tx.barberService.createMany({
+          data: serviceIds.map((serviceId) => ({
+            barberId: id,
+            serviceId,
+          })),
+        });
+      }
+    }
+
+    return tx.barber.findUniqueOrThrow({
+      where: { id },
+      include: {
+        serviceLinks: {
+          select: { serviceId: true },
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
   });
 
-  return NextResponse.json(barber);
+  return NextResponse.json(serializeBarber(barber));
 }
 
 export async function DELETE(request: Request, { params }: Params) {

@@ -11,6 +11,7 @@ export type Barber = {
   id: string;
   name: string;
   specialties: string[];
+  serviceIds: string[];
 };
 
 export type BarberAbsence = {

@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
+import { useEffect, useMemo, useState } from "react";
 import type { Appointment, Barber, BarberAbsence, Service } from "../types";
+import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
-import { Button } from "./ui/button";
 import { useToast } from "./ui/toast";
 
 type BookingFormProps = {
@@ -13,7 +13,9 @@ type BookingFormProps = {
   barbers: Barber[];
   appointments: Appointment[];
   absences: BarberAbsence[];
-  onBook: (data: Omit<Appointment, "id" | "isActive" | "deletedAt">) => Promise<void>;
+  onBook: (
+    data: Omit<Appointment, "id" | "isActive" | "deletedAt">,
+  ) => Promise<void>;
 };
 
 const OPEN_MINUTES = 8 * 60;
@@ -41,10 +43,17 @@ export default function BookingForm({
   absences,
   onBook,
 }: BookingFormProps) {
-  const isBookingDisabled = services.length === 0 || barbers.length === 0;
+  const bookableServices = useMemo(
+    () =>
+      services.filter((service) =>
+        barbers.some((barber) => barber.serviceIds.includes(service.id)),
+      ),
+    [services, barbers],
+  );
+  const isBookingDisabled = bookableServices.length === 0;
   const [clientName, setClientName] = useState("");
   const [phone, setPhone] = useState("");
-  const [serviceId, setServiceId] = useState(services[0]?.id ?? "");
+  const [serviceId, setServiceId] = useState(bookableServices[0]?.id ?? "");
   const [barberId, setBarberId] = useState(barbers[0]?.id ?? "");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
   const [time, setTime] = useState("");
@@ -53,35 +62,53 @@ export default function BookingForm({
   const { toast } = useToast();
 
   const selectedService = useMemo(
-    () => services.find((service) => service.id === serviceId),
-    [services, serviceId]
+    () => bookableServices.find((service) => service.id === serviceId),
+    [bookableServices, serviceId],
+  );
+
+  const availableBarbers = useMemo(
+    () =>
+      serviceId
+        ? barbers.filter((barber) => barber.serviceIds.includes(serviceId))
+        : [],
+    [barbers, serviceId],
   );
 
   const serviceDuration = selectedService?.duration ?? 30;
   const selectedBarber = useMemo(
-    () => barbers.find((barber) => barber.id === barberId),
-    [barberId, barbers],
+    () => availableBarbers.find((barber) => barber.id === barberId),
+    [availableBarbers, barberId],
   );
 
   const timeSlots = useMemo(() => {
     const slots: string[] = [];
-    for (let minutes = OPEN_MINUTES; minutes + serviceDuration <= CLOSE_MINUTES; minutes += serviceDuration) {
+    for (
+      let minutes = OPEN_MINUTES;
+      minutes + serviceDuration <= CLOSE_MINUTES;
+      minutes += serviceDuration
+    ) {
       slots.push(toTimeLabel(minutes));
     }
     return slots;
   }, [serviceDuration]);
 
   useEffect(() => {
-    if (!serviceId && services[0]?.id) {
-      setServiceId(services[0].id);
+    if (
+      !serviceId ||
+      !bookableServices.some((service) => service.id === serviceId)
+    ) {
+      setServiceId(bookableServices[0]?.id ?? "");
     }
-  }, [serviceId, services]);
+  }, [serviceId, bookableServices]);
 
   useEffect(() => {
-    if (!barberId && barbers[0]?.id) {
-      setBarberId(barbers[0].id);
+    if (
+      !barberId ||
+      !availableBarbers.some((barber) => barber.id === barberId)
+    ) {
+      setBarberId(availableBarbers[0]?.id ?? "");
     }
-  }, [barberId, barbers]);
+  }, [barberId, availableBarbers]);
 
   const availableSlots = useMemo(() => {
     if (!selectedDate || !barberId) {
@@ -96,10 +123,12 @@ export default function BookingForm({
     dateEnd.setHours(23, 59, 59, 999);
 
     const barberAppointments = appointments.filter(
-      (appointment) => appointment.barberId === barberId
+      (appointment) => appointment.barberId === barberId,
     );
 
-    const barberAbsences = absences.filter((absence) => absence.barberId === barberId);
+    const barberAbsences = absences.filter(
+      (absence) => absence.barberId === barberId,
+    );
 
     return timeSlots.filter((slot) => {
       const slotStart = new Date(selectedDate);
@@ -116,7 +145,9 @@ export default function BookingForm({
       for (const appointment of barberAppointments) {
         const appointmentStart = new Date(appointment.date);
         const appointmentEnd = new Date(appointmentStart);
-        const appointmentService = services.find((service) => service.id === appointment.serviceId);
+        const appointmentService = services.find(
+          (service) => service.id === appointment.serviceId,
+        );
         const duration = appointmentService?.duration ?? serviceDuration;
         appointmentEnd.setMinutes(appointmentEnd.getMinutes() + duration);
 
@@ -136,7 +167,15 @@ export default function BookingForm({
 
       return slotStart >= dateStart && slotEnd <= dateEnd;
     });
-  }, [appointments, absences, barberId, selectedDate, serviceDuration, services, timeSlots]);
+  }, [
+    appointments,
+    absences,
+    barberId,
+    selectedDate,
+    serviceDuration,
+    services,
+    timeSlots,
+  ]);
 
   useEffect(() => {
     if (availableSlots.length > 0 && !availableSlots.includes(time)) {
@@ -159,7 +198,9 @@ export default function BookingForm({
 
     if (!isFormValid) {
       if (isBookingDisabled) {
-        setFormError("Cadastre serviços e barbeiros antes de agendar.");
+        setFormError(
+          "Cadastre serviços ativos e vincule pelo menos um barbeiro para liberar os agendamentos.",
+        );
       } else if (!clientName.trim()) {
         setFormError("Informe seu nome.");
       } else if (!phone.trim()) {
@@ -203,10 +244,11 @@ export default function BookingForm({
       setPhone("");
       setSelectedDate(undefined);
       setTime("");
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: "Falha ao agendar",
-        description: "Não foi possível concluir o agendamento. Tente novamente.",
+        description:
+          "Não foi possível concluir o agendamento. Tente novamente.",
         variant: "error",
       });
     } finally {
@@ -223,11 +265,14 @@ export default function BookingForm({
         Escolha o serviço, o barbeiro e o horário ideal.
       </p>
 
-      <form className="grid grid-cols-1 md:grid-cols-2 gap-4" onSubmit={handleSubmit}>
+      <form
+        className="grid grid-cols-1 md:grid-cols-2 gap-4"
+        onSubmit={handleSubmit}
+      >
         {isBookingDisabled ? (
           <div className="md:col-span-2 rounded-2xl border border-amber-600/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            Cadastros em falta: adicione serviços e barbeiros no painel admin para liberar os
-            agendamentos.
+            Cadastros em falta: adicione serviços ativos e vincule ao menos um
+            barbeiro no painel admin para liberar os agendamentos.
           </div>
         ) : null}
         {formError ? (
@@ -236,10 +281,14 @@ export default function BookingForm({
           </div>
         ) : null}
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
+          <label
+            htmlFor="booking-client-name"
+            className="text-xs uppercase tracking-widest text-stone-400 font-semibold"
+          >
             Nome
           </label>
           <input
+            id="booking-client-name"
             value={clientName}
             onChange={(event) => setClientName(event.target.value)}
             className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
@@ -249,10 +298,14 @@ export default function BookingForm({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
+          <label
+            htmlFor="booking-phone"
+            className="text-xs uppercase tracking-widest text-stone-400 font-semibold"
+          >
             Telefone
           </label>
           <input
+            id="booking-phone"
             value={phone}
             onChange={(event) => setPhone(event.target.value)}
             className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
@@ -262,37 +315,47 @@ export default function BookingForm({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
+          <label
+            htmlFor="booking-service"
+            className="text-xs uppercase tracking-widest text-stone-400 font-semibold"
+          >
             Serviço
           </label>
           <select
+            id="booking-service"
             value={serviceId}
             onChange={(event) => setServiceId(event.target.value)}
             className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
             disabled={isBookingDisabled || isSubmitting}
           >
-            {services.map((service) => (
+            {bookableServices.map((service) => (
               <option key={service.id} value={service.id}>
                 {service.name} • R$ {service.price}
               </option>
             ))}
           </select>
           {selectedService ? (
-            <span className="text-xs text-stone-500">{selectedService.description}</span>
+            <span className="text-xs text-stone-500">
+              {selectedService.description}
+            </span>
           ) : null}
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
+          <label
+            htmlFor="booking-barber"
+            className="text-xs uppercase tracking-widest text-stone-400 font-semibold"
+          >
             Barbeiro {selectedBarber ? `• ${selectedBarber.name}` : ""}
           </label>
           <select
+            id="booking-barber"
             value={barberId}
             onChange={(event) => setBarberId(event.target.value)}
             className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
             disabled={isBookingDisabled || isSubmitting}
           >
-            {barbers.map((barber) => (
+            {availableBarbers.map((barber) => (
               <option key={barber.id} value={barber.id}>
                 {barber.name}
               </option>
@@ -301,18 +364,24 @@ export default function BookingForm({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
+          <label
+            htmlFor="booking-date"
+            className="text-xs uppercase tracking-widest text-stone-400 font-semibold"
+          >
             Data
           </label>
           <Popover>
             <PopoverTrigger asChild>
               <Button
+                id="booking-date"
                 type="button"
                 variant="outline"
                 className="h-11 justify-start px-4 text-left font-normal text-stone-200"
                 disabled={isBookingDisabled || isSubmitting}
               >
-                {selectedDate ? format(selectedDate, "dd/MM/yyyy") : "Selecione uma data"}
+                {selectedDate
+                  ? format(selectedDate, "dd/MM/yyyy")
+                  : "Selecione uma data"}
               </Button>
             </PopoverTrigger>
             <PopoverContent align="start">
@@ -327,14 +396,20 @@ export default function BookingForm({
         </div>
 
         <div className="flex flex-col gap-2">
-          <label className="text-xs uppercase tracking-widest text-stone-400 font-semibold">
+          <label
+            htmlFor="booking-time"
+            className="text-xs uppercase tracking-widest text-stone-400 font-semibold"
+          >
             Horário
           </label>
           <select
+            id="booking-time"
             value={time}
             onChange={(event) => setTime(event.target.value)}
             className="h-11 rounded-xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100"
-            disabled={isBookingDisabled || availableSlots.length === 0 || isSubmitting}
+            disabled={
+              isBookingDisabled || availableSlots.length === 0 || isSubmitting
+            }
           >
             {availableSlots.map((slot) => (
               <option key={slot} value={slot}>

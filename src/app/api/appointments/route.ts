@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { stackServerApp } from "@/stack/server";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -28,12 +27,35 @@ export async function POST(request: Request) {
 
   const service = await prisma.service.findUnique({ where: { id: serviceId } });
   if (!service || !service.isActive) {
-    return NextResponse.json({ error: "Serviço indisponível" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Serviço indisponível" },
+      { status: 400 },
+    );
   }
 
-  const barber = await prisma.barber.findUnique({ where: { id: barberId } });
+  const barber = await prisma.barber.findUnique({
+    where: { id: barberId },
+    include: {
+      serviceLinks: {
+        select: { serviceId: true },
+      },
+    },
+  });
   if (!barber) {
-    return NextResponse.json({ error: "Barbeiro indisponível" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Barbeiro indisponível" },
+      { status: 400 },
+    );
+  }
+
+  const canPerformService = barber.serviceLinks.some(
+    (serviceLink) => serviceLink.serviceId === serviceId,
+  );
+  if (!canPerformService) {
+    return NextResponse.json(
+      { error: "Barbeiro não atende esse serviço" },
+      { status: 400 },
+    );
   }
 
   const appointment = await prisma.appointment.create({
