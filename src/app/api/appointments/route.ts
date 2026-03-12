@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { createAppointmentPublicCode } from "@/lib/public-appointments";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -60,6 +61,7 @@ export async function POST(request: Request) {
 
   const appointment = await prisma.appointment.create({
     data: {
+      publicCode: await createAppointmentPublicCode(),
       clientName,
       phone,
       date: new Date(date),
@@ -69,5 +71,12 @@ export async function POST(request: Request) {
     },
   });
 
-  return NextResponse.json(appointment, { status: 201 });
+  return NextResponse.json(
+    {
+      id: appointment.id,
+      publicCode: appointment.publicCode,
+      date: appointment.date.toISOString(),
+    },
+    { status: 201 },
+  );
 }

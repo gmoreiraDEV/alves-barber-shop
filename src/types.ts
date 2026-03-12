@@ -31,3 +31,34 @@ export type Appointment = {
   isActive: boolean;
   deletedAt?: string | null;
 };
+
+export type AppointmentRequest = {
+  clientName: string;
+  phone: string;
+  date: string;
+  serviceId: string;
+  barberId: string;
+};
+
+export type BookAppointmentResult = {
+  id: string;
+  publicCode: string;
+  date: string;
+};
+
+export type PublicAppointmentStatus = "scheduled" | "completed" | "canceled";
+
+export type PublicAppointmentDetails = {
+  id: string;
+  publicCode: string;
+  clientName: string;
+  phoneMasked: string;
+  date: string;
+  status: PublicAppointmentStatus;
+  canceledAt: string | null;
+  canCancel: boolean;
+  serviceName: string;
+  servicePrice: number;
+  serviceDuration: number;
+  barberName: string;
+};

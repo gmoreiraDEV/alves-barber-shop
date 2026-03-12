@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type LoadResult, loadHomeData } from "@/lib/app-data";
-import type { Appointment } from "@/types";
+import type { AppointmentRequest, BookAppointmentResult } from "@/types";
 import BookingForm from "./BookingForm";
 
 type LoadState = "idle" | "loading" | "error";
@@ -35,8 +36,8 @@ export default function HomePage() {
   }, [loadData]);
 
   const handleBook = async (
-    payload: Omit<Appointment, "id" | "isActive" | "deletedAt">,
-  ) => {
+    payload: AppointmentRequest,
+  ): Promise<BookAppointmentResult> => {
     const response = await fetch("/api/appointments", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -46,7 +47,15 @@ export default function HomePage() {
       throw new Error("Falha ao agendar");
     }
 
-    await loadData();
+    const result = (await response.json()) as BookAppointmentResult;
+
+    try {
+      await loadData();
+    } catch (_error) {
+      // Preserve the booking confirmation even if the refresh fails.
+    }
+
+    return result;
   };
 
   const homeHeroText = useMemo(
@@ -87,9 +96,23 @@ export default function HomePage() {
             <p className="text-stone-400 max-w-xl mx-auto text-lg">
               {homeHeroText.subtitle}
             </p>
+            <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <a
+                href="#booking"
+                className="inline-flex h-11 items-center justify-center rounded-full bg-amber-500 px-6 text-xs font-bold uppercase tracking-[0.24em] text-stone-950 transition hover:bg-amber-400"
+              >
+                Agendar agora
+              </a>
+              <Link
+                href="/meu-agendamento"
+                className="inline-flex h-11 items-center justify-center rounded-full border border-stone-700 px-6 text-xs font-bold uppercase tracking-[0.24em] text-stone-100 transition hover:bg-stone-800"
+              >
+                Consultar agendamento
+              </Link>
+            </div>
           </div>
         </section>
-        <section className="px-4 -mt-20 pb-20">
+        <section id="booking" className="px-4 -mt-20 pb-20">
           <BookingForm
             services={data.services.filter((service) => service.isActive)}
             barbers={data.barbers}

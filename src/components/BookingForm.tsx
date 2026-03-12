@@ -2,8 +2,16 @@
 
 import { format } from "date-fns";
 import { ChevronDown } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { Appointment, Barber, BarberAbsence, Service } from "../types";
+import type {
+  Appointment,
+  AppointmentRequest,
+  Barber,
+  BarberAbsence,
+  BookAppointmentResult,
+  Service,
+} from "../types";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
@@ -14,9 +22,7 @@ type BookingFormProps = {
   barbers: Barber[];
   appointments: Appointment[];
   absences: BarberAbsence[];
-  onBook: (
-    data: Omit<Appointment, "id" | "isActive" | "deletedAt">,
-  ) => Promise<void>;
+  onBook: (data: AppointmentRequest) => Promise<BookAppointmentResult>;
 };
 
 const OPEN_MINUTES = 8 * 60;
@@ -45,6 +51,17 @@ function SelectArrow() {
   );
 }
 
+function formatPublicCode(code: string) {
+  return (
+    code
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .match(/.{1,4}/g)
+      ?.join(" ")
+      .trim() ?? code
+  );
+}
+
 export default function BookingForm({
   services,
   barbers,
@@ -68,6 +85,7 @@ export default function BookingForm({
   const [time, setTime] = useState("");
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastBookingCode, setLastBookingCode] = useState<string | null>(null);
   const { toast } = useToast();
   const selectClassName =
     "h-11 w-full appearance-none rounded-xl border border-stone-700 bg-stone-950 px-4 pr-11 text-sm text-stone-100";
@@ -237,17 +255,18 @@ export default function BookingForm({
     try {
       setIsSubmitting(true);
       setFormError("");
-      await onBook({
+      const bookingResult = await onBook({
         clientName,
         phone,
         serviceId,
         barberId,
         date: dateTime.toISOString(),
       });
+      setLastBookingCode(bookingResult.publicCode);
 
       toast({
         title: "Agendamento confirmado",
-        description: "Seu horário foi reservado com sucesso.",
+        description: `Código: ${bookingResult.publicCode}`,
         variant: "success",
       });
 
@@ -289,6 +308,29 @@ export default function BookingForm({
         {formError ? (
           <div className="md:col-span-2 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
             {formError}
+          </div>
+        ) : null}
+        {lastBookingCode ? (
+          <div className="md:col-span-2 rounded-[1.75rem] border border-emerald-500/30 bg-emerald-500/10 px-5 py-4 text-emerald-100">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-300/90">
+                  Agendamento confirmado
+                </p>
+                <p className="mt-2 text-sm text-emerald-100">
+                  Guarde este código para consultar ou cancelar depois:
+                </p>
+                <p className="mt-2 font-mono text-lg font-semibold tracking-[0.24em] text-white">
+                  {formatPublicCode(lastBookingCode)}
+                </p>
+              </div>
+              <Link
+                href={`/meu-agendamento?code=${encodeURIComponent(lastBookingCode)}`}
+                className="inline-flex h-11 items-center justify-center rounded-full border border-emerald-400/30 bg-stone-950/40 px-5 text-xs font-bold uppercase tracking-[0.18em] text-emerald-100 transition hover:bg-stone-950/70"
+              >
+                Consultar reserva
+              </Link>
+            </div>
           </div>
         ) : null}
         <div className="flex flex-col gap-2">

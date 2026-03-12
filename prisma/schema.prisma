@@ -44,6 +44,7 @@ model BarberService {
 
 model Appointment {
   id         String   @id @default(cuid())
+  publicCode String   @unique
   clientName String
   phone      String
   date       DateTime
