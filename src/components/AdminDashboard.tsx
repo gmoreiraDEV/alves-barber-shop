@@ -10,6 +10,7 @@ import type {
   WorkingHoursDay,
 } from "../types";
 import AdminAppointmentsBoard from "./AdminAppointmentsBoard";
+import AdminFinancePanel from "./AdminFinancePanel";
 import BarberServiceMultiSelect from "./BarberServiceMultiSelect";
 import ServicesTable from "./ServicesTable";
 import { Button } from "./ui/button";
@@ -64,6 +65,7 @@ type AdminDashboardProps = {
 };
 
 type ModalTab = "service" | "barber" | "absence";
+type DashboardView = "operations" | "finance";
 
 function formatDate(date: Date) {
   return date.toLocaleString("pt-BR");
@@ -95,6 +97,7 @@ export default function AdminDashboard({
   onLogout,
   adminName,
 }: AdminDashboardProps) {
+  const [activeView, setActiveView] = useState<DashboardView>("operations");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<ModalTab>("service");
 
@@ -520,6 +523,20 @@ export default function AdminDashboard({
     }
   };
 
+  const handleChangeView = (view: DashboardView) => {
+    setActiveView(view);
+
+    if (view === "finance") {
+      setIsModalOpen(false);
+      setServiceToDelete(null);
+      setBarberToDelete(null);
+      setAbsenceToDelete(null);
+      setModalError("");
+      setDeleteError("");
+      setBarberDeleteError("");
+    }
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-12 flex flex-col gap-8">
       <header className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -530,18 +547,47 @@ export default function AdminDashboard({
           <h2 className="text-3xl font-bold text-stone-100">
             Bem-vindo, {adminName}
           </h2>
+          <p className="mt-2 text-sm text-stone-500">
+            {activeView === "operations"
+              ? "Gerencie agenda, equipe, serviços e horários em um só lugar."
+              : "Acompanhe o faturamento do dia, da semana e do mês para se organizar melhor."}
+          </p>
         </div>
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => {
-              resetBarberForm();
-              setIsModalOpen(true);
-            }}
-            className="h-11 px-6 rounded-full bg-amber-500 text-stone-950 text-xs uppercase tracking-widest font-bold hover:bg-amber-400 transition"
-          >
-            Novo cadastro
-          </button>
+          <div className="flex rounded-full border border-stone-800 bg-stone-950/70 p-1">
+            {(
+              [
+                { id: "operations", label: "Operação" },
+                { id: "finance", label: "Financeiro" },
+              ] as const
+            ).map((view) => (
+              <button
+                type="button"
+                key={view.id}
+                onClick={() => handleChangeView(view.id)}
+                className={`h-10 px-4 rounded-full text-[10px] uppercase tracking-widest font-bold transition ${
+                  activeView === view.id
+                    ? "bg-amber-500 text-stone-950"
+                    : "text-stone-300 hover:bg-stone-800"
+                }`}
+              >
+                {view.label}
+              </button>
+            ))}
+          </div>
+
+          {activeView === "operations" ? (
+            <button
+              type="button"
+              onClick={() => {
+                resetBarberForm();
+                setIsModalOpen(true);
+              }}
+              className="h-11 px-6 rounded-full bg-amber-500 text-stone-950 text-xs uppercase tracking-widest font-bold hover:bg-amber-400 transition"
+            >
+              Novo cadastro
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={onLogout}
@@ -552,155 +598,167 @@ export default function AdminDashboard({
         </div>
       </header>
 
-      <AdminAppointmentsBoard
-        appointments={appointments}
-        services={services}
-        barbers={barbers}
-        absences={absences}
-        workingHours={workingHours}
-        onDeleteAppointment={onDeleteAppointment}
-        onMoveAppointment={onMoveAppointment}
-      />
+      {activeView === "operations" ? (
+        <>
+          <AdminAppointmentsBoard
+            appointments={appointments}
+            services={services}
+            barbers={barbers}
+            absences={absences}
+            workingHours={workingHours}
+            onDeleteAppointment={onDeleteAppointment}
+            onMoveAppointment={onMoveAppointment}
+          />
 
-      <ServicesTable
-        services={services}
-        onSetServiceActive={onSetServiceActive}
-        onEditClick={handleEditService}
-        onDeleteClick={(service) => {
-          setDeleteError("");
-          setServiceToDelete(service);
-        }}
-        onAddClick={() => {
-          resetBarberForm();
-          setActiveTab("service");
-          setIsModalOpen(true);
-        }}
-      />
+          <ServicesTable
+            services={services}
+            onSetServiceActive={onSetServiceActive}
+            onEditClick={handleEditService}
+            onDeleteClick={(service) => {
+              setDeleteError("");
+              setServiceToDelete(service);
+            }}
+            onAddClick={() => {
+              resetBarberForm();
+              setActiveTab("service");
+              setIsModalOpen(true);
+            }}
+          />
 
-      <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-stone-100">Barbeiros</h3>
-          <button
-            type="button"
-            onClick={openCreateBarberModal}
-            className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
-          >
-            Adicionar barbeiro
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {barbers.map((barber) => (
-            <div
-              key={barber.id}
-              className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
-            >
-              <div className="text-sm font-semibold text-stone-100">
-                {barber.name}
-              </div>
-              <div className="text-xs text-stone-500">
-                {getBarberServiceNames(barber).length > 0
-                  ? `Serviços: ${getBarberServiceNames(barber).join(", ")}`
-                  : "Nenhum serviço vinculado."}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => openEditBarberModal(barber)}
-                  className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
-                >
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeleteError("");
-                    setBarberDeleteError("");
-                    setReplacementBarberId("");
-                    setBarberToDelete(barber);
-                  }}
-                  className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
-                  disabled={deletingBarberId === barber.id}
-                >
-                  {deletingBarberId === barber.id ? "Removendo..." : "Remover"}
-                </button>
-              </div>
+          <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-stone-100">Barbeiros</h3>
+              <button
+                type="button"
+                onClick={openCreateBarberModal}
+                className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
+              >
+                Adicionar barbeiro
+              </button>
             </div>
-          ))}
-        </div>
-      </section>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-bold text-stone-100">Ausências</h3>
-            <button
-              type="button"
-              onClick={() => {
-                resetBarberForm();
-                setActiveTab("absence");
-                setIsModalOpen(true);
-              }}
-              className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
-            >
-              Adicionar ausência
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {absences.length === 0 ? (
-              <p className="text-sm text-stone-500">
-                Nenhuma ausência cadastrada.
-              </p>
-            ) : (
-              absences.map((absence) => (
+            <div className="space-y-3">
+              {barbers.map((barber) => (
                 <div
-                  key={absence.id}
+                  key={barber.id}
                   className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
                 >
                   <div className="text-sm font-semibold text-stone-100">
-                    {barbersById.get(absence.barberId)?.name ?? "Barbeiro"}
+                    {barber.name}
                   </div>
                   <div className="text-xs text-stone-500">
-                    {formatDate(new Date(absence.startAt))} —{" "}
-                    {formatDate(new Date(absence.endAt))}
+                    {getBarberServiceNames(barber).length > 0
+                      ? `Serviços: ${getBarberServiceNames(barber).join(", ")}`
+                      : "Nenhum serviço vinculado."}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => void handleEditAbsence(absence)}
+                      onClick={() => openEditBarberModal(barber)}
                       className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
-                      disabled={updatingAbsenceId === absence.id}
                     >
-                      {updatingAbsenceId === absence.id
-                        ? "Salvando..."
-                        : "Editar"}
+                      Editar
                     </button>
                     <button
                       type="button"
                       onClick={() => {
                         setDeleteError("");
-                        setAbsenceToDelete(absence);
+                        setBarberDeleteError("");
+                        setReplacementBarberId("");
+                        setBarberToDelete(barber);
                       }}
                       className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
-                      disabled={deletingAbsenceId === absence.id}
+                      disabled={deletingBarberId === barber.id}
                     >
-                      {deletingAbsenceId === absence.id
+                      {deletingBarberId === barber.id
                         ? "Removendo..."
                         : "Remover"}
                     </button>
                   </div>
                 </div>
-              ))
-            )}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
 
-        <WorkingHoursEditor
-          workingHours={workingHours}
-          onSaveWorkingHours={onSaveWorkingHours}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xl font-bold text-stone-100">Ausências</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetBarberForm();
+                    setActiveTab("absence");
+                    setIsModalOpen(true);
+                  }}
+                  className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
+                >
+                  Adicionar ausência
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {absences.length === 0 ? (
+                  <p className="text-sm text-stone-500">
+                    Nenhuma ausência cadastrada.
+                  </p>
+                ) : (
+                  absences.map((absence) => (
+                    <div
+                      key={absence.id}
+                      className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
+                    >
+                      <div className="text-sm font-semibold text-stone-100">
+                        {barbersById.get(absence.barberId)?.name ?? "Barbeiro"}
+                      </div>
+                      <div className="text-xs text-stone-500">
+                        {formatDate(new Date(absence.startAt))} —{" "}
+                        {formatDate(new Date(absence.endAt))}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleEditAbsence(absence)}
+                          className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
+                          disabled={updatingAbsenceId === absence.id}
+                        >
+                          {updatingAbsenceId === absence.id
+                            ? "Salvando..."
+                            : "Editar"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeleteError("");
+                            setAbsenceToDelete(absence);
+                          }}
+                          className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
+                          disabled={deletingAbsenceId === absence.id}
+                        >
+                          {deletingAbsenceId === absence.id
+                            ? "Removendo..."
+                            : "Remover"}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <WorkingHoursEditor
+              workingHours={workingHours}
+              onSaveWorkingHours={onSaveWorkingHours}
+            />
+          </div>
+        </>
+      ) : (
+        <AdminFinancePanel
+          appointments={appointments}
+          services={services}
+          barbers={barbers}
         />
-      </div>
+      )}
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
