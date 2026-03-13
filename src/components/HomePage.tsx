@@ -80,15 +80,15 @@ export default function HomePage() {
         </div>
       ) : null}
 
-      <div className="flex flex-col">
-        <section className="relative h-[400px] flex items-center justify-center overflow-hidden">
+      <div className="relative isolate flex flex-col">
+        <section className="relative h-100 flex items-center justify-center overflow-hidden">
           <div className="absolute inset-0 z-0">
             <img
               src="https://images.unsplash.com/photo-1503951914875-452162b0f3f1?auto=format&fit=crop&q=80&w=1600"
               className="w-full h-full object-cover opacity-20"
               alt="Background"
             />
-            <div className="absolute inset-0 bg-gradient-to-b from-stone-950/0 via-stone-950/60 to-stone-950"></div>
+            <div className="pointer-events-none absolute inset-0 bg-linear-to-b from-stone-950/0 via-stone-950/60 to-stone-950"></div>
           </div>
           <div className="relative z-10 text-center px-4">
             <h2 className="text-5xl md:text-7xl font-bold mb-4 tracking-tight text-stone-100">
@@ -116,7 +116,10 @@ export default function HomePage() {
             </div>
           </div>
         </section>
-        <section id="booking" className="px-4 -mt-20 pb-20">
+        <section
+          id="booking"
+          className="relative z-20 -mt-8 px-4 pb-20 md:-mt-16"
+        >
           <BookingForm
             services={data.services.filter((service) => service.isActive)}
             barbers={data.barbers}
