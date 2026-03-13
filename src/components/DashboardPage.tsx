@@ -4,7 +4,7 @@ import { useUser } from "@stackframe/stack";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { type LoadResult, loadAdminData } from "@/lib/app-data";
-import type { BarberAbsence, Service } from "@/types";
+import type { BarberAbsence, Service, WorkingHoursDay } from "@/types";
 import AdminDashboard from "./AdminDashboard";
 import AdminLogin from "./AdminLogin";
 
@@ -15,6 +15,7 @@ const emptyLoadResult: LoadResult = {
   barbers: [],
   appointments: [],
   absences: [],
+  workingHours: [],
 };
 
 export default function DashboardPage() {
@@ -50,7 +51,10 @@ export default function DashboardPage() {
       body: JSON.stringify({ date: nextDateIso }),
     });
     if (!response.ok) {
-      throw new Error("Falha ao mover agendamento");
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(payload?.error ?? "Falha ao mover agendamento");
     }
     await loadData();
   };
@@ -212,6 +216,19 @@ export default function DashboardPage() {
     await loadData();
   };
 
+  const handleSaveWorkingHours = async (workingHours: WorkingHoursDay[]) => {
+    const response = await fetch("/api/working-hours", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(workingHours),
+    });
+    if (!response.ok) {
+      throw new Error("Falha ao atualizar horário padrão");
+    }
+
+    await loadData();
+  };
+
   if (!user) {
     return (
       <div className="px-4 py-20">
@@ -233,6 +250,7 @@ export default function DashboardPage() {
         services={data.services}
         barbers={data.barbers}
         absences={data.absences}
+        workingHours={data.workingHours}
         onDeleteAppointment={handleDeleteAppointment}
         onMoveAppointment={handleMoveAppointment}
         onAddService={handleAddService}
@@ -245,6 +263,7 @@ export default function DashboardPage() {
         onAddAbsence={handleAddAbsence}
         onDeleteAbsence={handleDeleteAbsence}
         onUpdateAbsence={handleUpdateAbsence}
+        onSaveWorkingHours={handleSaveWorkingHours}
         onLogout={() => user.signOut()}
         adminName={user.displayName || user.primaryEmail || "Admin"}
       />

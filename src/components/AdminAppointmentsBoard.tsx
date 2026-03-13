@@ -3,7 +3,21 @@
 import { format } from "date-fns";
 import type { DragEvent, ReactNode } from "react";
 import { Fragment, useMemo, useState } from "react";
-import type { Appointment, Barber, BarberAbsence, Service } from "@/types";
+import {
+  getWorkingHoursBounds,
+  getWorkingHoursForDate,
+  isRangeWithinWorkingHours,
+  normalizeWorkingHours,
+  toMinutes,
+  toTimeLabel,
+} from "@/lib/working-hours";
+import type {
+  Appointment,
+  Barber,
+  BarberAbsence,
+  Service,
+  WorkingHoursDay,
+} from "@/types";
 import { useToast } from "./ui/toast";
 
 type FilterRange = "today" | "week" | "month";
@@ -24,6 +38,7 @@ type TimeSlotCellProps = {
   slotLabel?: string;
   appointments: Appointment[];
   isOver: boolean;
+  isClosed: boolean;
   onDragOver: (event: DragEvent<HTMLDivElement>) => void;
   onDragLeave: () => void;
   onDrop: () => void;
@@ -35,13 +50,12 @@ type AdminAppointmentsBoardProps = {
   services: Service[];
   barbers: Barber[];
   absences: BarberAbsence[];
+  workingHours: WorkingHoursDay[];
   onDeleteAppointment: (id: string) => Promise<void>;
   onMoveAppointment: (id: string, nextDateIso: string) => Promise<void>;
 };
 
 const weekdays = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-const OPEN_MINUTES = 8 * 60;
-const CLOSE_MINUTES = 21 * 60;
 const SLOT_STEP = 30;
 
 function startOfDay(date: Date) {
@@ -89,17 +103,6 @@ function isSameDay(a: Date, b: Date) {
     a.getMonth() === b.getMonth() &&
     a.getDate() === b.getDate()
   );
-}
-
-function toMinutes(label: string) {
-  const [hours, minutes] = label.split(":").map(Number);
-  return hours * 60 + minutes;
-}
-
-function toTimeLabel(totalMinutes: number) {
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
@@ -162,6 +165,7 @@ function TimeSlotCell({
   slotLabel,
   appointments,
   isOver,
+  isClosed,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -174,9 +178,11 @@ function TimeSlotCell({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       className={`min-h-14 border-r border-b border-stone-800 px-2 py-1.5 transition last:border-r-0 ${
-        isOver
-          ? "bg-amber-500/10 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.8)]"
-          : "bg-transparent"
+        isClosed
+          ? "bg-stone-950/80"
+          : isOver
+            ? "bg-amber-500/10 shadow-[inset_0_0_0_1px_rgba(251,191,36,0.8)]"
+            : "bg-transparent"
       }`}
     >
       {slotLabel ? (
@@ -192,6 +198,7 @@ export default function AdminAppointmentsBoard({
   services,
   barbers,
   absences,
+  workingHours,
   onDeleteAppointment,
   onMoveAppointment,
 }: AdminAppointmentsBoardProps) {
@@ -212,6 +219,14 @@ export default function AdminAppointmentsBoard({
   const servicesById = useMemo(
     () => new Map(services.map((service) => [service.id, service])),
     [services],
+  );
+  const normalizedWorkingHours = useMemo(
+    () => normalizeWorkingHours(workingHours),
+    [workingHours],
+  );
+  const workingHoursBounds = useMemo(
+    () => getWorkingHoursBounds(normalizedWorkingHours),
+    [normalizedWorkingHours],
   );
   const barbersById = useMemo(
     () => new Map(barbers.map((barber) => [barber.id, barber])),
@@ -272,16 +287,20 @@ export default function AdminAppointmentsBoard({
   }, [now, range]);
 
   const slots = useMemo(() => {
+    if (!workingHoursBounds) {
+      return [];
+    }
+
     const list: string[] = [];
     for (
-      let minutes = OPEN_MINUTES;
-      minutes < CLOSE_MINUTES;
+      let minutes = workingHoursBounds.openMinutes;
+      minutes < workingHoursBounds.closeMinutes;
       minutes += SLOT_STEP
     ) {
       list.push(toTimeLabel(minutes));
     }
     return list;
-  }, []);
+  }, [workingHoursBounds]);
 
   const appointmentsByDay = useMemo(() => {
     const map = new Map<string, Appointment[]>();
@@ -317,6 +336,15 @@ export default function AdminAppointmentsBoard({
     const duration = getDurationMinutes(appointment);
     const nextEnd = new Date(nextDate);
     nextEnd.setMinutes(nextDate.getMinutes() + duration);
+    const nextStartMinutes = nextDate.getHours() * 60 + nextDate.getMinutes();
+    const nextEndMinutes = nextStartMinutes + duration;
+    const workingDay = getWorkingHoursForDate(normalizedWorkingHours, nextDate);
+
+    if (
+      !isRangeWithinWorkingHours(workingDay, nextStartMinutes, nextEndMinutes)
+    ) {
+      return false;
+    }
 
     const barberAbsences = absences.filter(
       (absence) => absence.barberId === appointment.barberId,
@@ -356,8 +384,9 @@ export default function AdminAppointmentsBoard({
 
     if (!canMoveAppointment(appointment, nextDate)) {
       toast({
-        title: "Conflito de horário",
-        description: "O barbeiro já possui agendamento/ausência nesse horário.",
+        title: "Horário indisponível",
+        description:
+          "O barbeiro já possui conflito nesse período ou o horário está fora do atendimento padrão.",
         variant: "error",
       });
       return;
@@ -372,9 +401,13 @@ export default function AdminAppointmentsBoard({
         variant: "success",
       });
     } catch (_error) {
+      const message =
+        _error instanceof Error
+          ? _error.message
+          : "Não foi possível salvar a alteração. Tente novamente.";
       toast({
         title: "Erro ao mover agendamento",
-        description: "Não foi possível salvar a alteração. Tente novamente.",
+        description: message,
         variant: "error",
       });
     } finally {
@@ -580,6 +613,16 @@ export default function AdminAppointmentsBoard({
                 const slotDate = new Date(day);
                 slotDate.setHours(0, 0, 0, 0);
                 slotDate.setMinutes(toMinutes(slot));
+                const slotMinutes = toMinutes(slot);
+                const workingDay = getWorkingHoursForDate(
+                  normalizedWorkingHours,
+                  day,
+                );
+                const isClosed = !isRangeWithinWorkingHours(
+                  workingDay,
+                  slotMinutes,
+                  slotMinutes + SLOT_STEP,
+                );
 
                 const slotKey = getSlotKey(slotDate);
                 const isOver = hoverTarget === `slot:${slotKey}`;
@@ -590,13 +633,20 @@ export default function AdminAppointmentsBoard({
                     <TimeAxis slot={slot} />
                     <TimeSlotCell
                       appointments={slotAppointments}
-                      isOver={isOver}
+                      isOver={!isClosed && isOver}
+                      isClosed={isClosed}
                       onDragOver={(event) => {
+                        if (isClosed) {
+                          return;
+                        }
                         event.preventDefault();
                         setHoverTarget(`slot:${slotKey}`);
                       }}
                       onDragLeave={() => setHoverTarget(null)}
                       onDrop={async () => {
+                        if (isClosed) {
+                          return;
+                        }
                         await handleDropInSlot(day, slot);
                         setHoverTarget(null);
                         setDraggedAppointmentId(null);
@@ -623,6 +673,16 @@ export default function AdminAppointmentsBoard({
                         const slotDate = new Date(day);
                         slotDate.setHours(0, 0, 0, 0);
                         slotDate.setMinutes(toMinutes(slot));
+                        const slotMinutes = toMinutes(slot);
+                        const workingDay = getWorkingHoursForDate(
+                          normalizedWorkingHours,
+                          day,
+                        );
+                        const isClosed = !isRangeWithinWorkingHours(
+                          workingDay,
+                          slotMinutes,
+                          slotMinutes + SLOT_STEP,
+                        );
 
                         const slotKey = getSlotKey(slotDate);
                         const isOver = hoverTarget === `slot:${slotKey}`;
@@ -633,13 +693,20 @@ export default function AdminAppointmentsBoard({
                           <TimeSlotCell
                             key={slotKey}
                             appointments={slotAppointments}
-                            isOver={isOver}
+                            isOver={!isClosed && isOver}
+                            isClosed={isClosed}
                             onDragOver={(event) => {
+                              if (isClosed) {
+                                return;
+                              }
                               event.preventDefault();
                               setHoverTarget(`slot:${slotKey}`);
                             }}
                             onDragLeave={() => setHoverTarget(null)}
                             onDrop={async () => {
+                              if (isClosed) {
+                                return;
+                              }
                               await handleDropInSlot(day, slot);
                               setHoverTarget(null);
                               setDraggedAppointmentId(null);

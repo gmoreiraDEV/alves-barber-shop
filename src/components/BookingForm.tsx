@@ -4,6 +4,14 @@ import { format } from "date-fns";
 import { ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import {
+  getWorkingHoursBounds,
+  getWorkingHoursForDate,
+  isRangeWithinWorkingHours,
+  normalizeWorkingHours,
+  toMinutes,
+  toTimeLabel,
+} from "@/lib/working-hours";
 import type {
   Appointment,
   AppointmentRequest,
@@ -11,6 +19,7 @@ import type {
   BarberAbsence,
   BookAppointmentResult,
   Service,
+  WorkingHoursDay,
 } from "../types";
 import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
@@ -22,21 +31,15 @@ type BookingFormProps = {
   barbers: Barber[];
   appointments: Appointment[];
   absences: BarberAbsence[];
+  workingHours: WorkingHoursDay[];
   onBook: (data: AppointmentRequest) => Promise<BookAppointmentResult>;
 };
 
-const OPEN_MINUTES = 8 * 60;
-const CLOSE_MINUTES = 21 * 60;
-
-function toTimeLabel(minutes: number) {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
-  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
-}
-
-function toMinutes(label: string) {
-  const [h, m] = label.split(":").map((value) => Number(value));
-  return h * 60 + m;
+function setTimeFromMinutes(date: Date, minutes: number) {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  nextDate.setMinutes(minutes);
+  return nextDate;
 }
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
@@ -67,6 +70,7 @@ export default function BookingForm({
   barbers,
   appointments,
   absences,
+  workingHours,
   onBook,
 }: BookingFormProps) {
   const bookableServices = useMemo(
@@ -104,22 +108,34 @@ export default function BookingForm({
   );
 
   const serviceDuration = selectedService?.duration ?? 30;
+  const normalizedWorkingHours = useMemo(
+    () => normalizeWorkingHours(workingHours),
+    [workingHours],
+  );
+  const workingHoursBounds = useMemo(
+    () => getWorkingHoursBounds(normalizedWorkingHours),
+    [normalizedWorkingHours],
+  );
   const selectedBarber = useMemo(
     () => availableBarbers.find((barber) => barber.id === barberId),
     [availableBarbers, barberId],
   );
 
   const timeSlots = useMemo(() => {
+    if (!workingHoursBounds) {
+      return [];
+    }
+
     const slots: string[] = [];
     for (
-      let minutes = OPEN_MINUTES;
-      minutes + serviceDuration <= CLOSE_MINUTES;
+      let minutes = workingHoursBounds.openMinutes;
+      minutes + serviceDuration <= workingHoursBounds.closeMinutes;
       minutes += serviceDuration
     ) {
       slots.push(toTimeLabel(minutes));
     }
     return slots;
-  }, [serviceDuration]);
+  }, [serviceDuration, workingHoursBounds]);
 
   useEffect(() => {
     if (
@@ -158,16 +174,27 @@ export default function BookingForm({
     const barberAbsences = absences.filter(
       (absence) => absence.barberId === barberId,
     );
+    const workingDay = getWorkingHoursForDate(
+      normalizedWorkingHours,
+      selectedDate,
+    );
+
+    if (!workingDay?.isOpen) {
+      return [];
+    }
 
     return timeSlots.filter((slot) => {
-      const slotStart = new Date(selectedDate);
       const minutes = toMinutes(slot);
-      slotStart.setHours(0, minutes, 0, 0);
-      slotStart.setMinutes(minutes);
+      const slotStart = setTimeFromMinutes(selectedDate, minutes);
       const slotEnd = new Date(slotStart);
       slotEnd.setMinutes(slotStart.getMinutes() + serviceDuration);
+      const slotEndMinutes = minutes + serviceDuration;
 
       if (slotStart < now) {
+        return false;
+      }
+
+      if (!isRangeWithinWorkingHours(workingDay, minutes, slotEndMinutes)) {
         return false;
       }
 
@@ -204,6 +231,7 @@ export default function BookingForm({
     serviceDuration,
     services,
     timeSlots,
+    normalizedWorkingHours,
   ]);
 
   useEffect(() => {
@@ -274,13 +302,20 @@ export default function BookingForm({
       setPhone("");
       setSelectedDate(undefined);
       setTime("");
-    } catch (_error) {
+    } catch (error) {
       toast({
         title: "Falha ao agendar",
         description:
-          "Não foi possível concluir o agendamento. Tente novamente.",
+          error instanceof Error
+            ? error.message
+            : "Não foi possível concluir o agendamento. Tente novamente.",
         variant: "error",
       });
+      setFormError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível concluir o agendamento. Tente novamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }

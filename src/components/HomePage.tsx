@@ -13,6 +13,7 @@ const emptyLoadResult: LoadResult = {
   barbers: [],
   appointments: [],
   absences: [],
+  workingHours: [],
 };
 
 export default function HomePage() {
@@ -44,7 +45,10 @@ export default function HomePage() {
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
-      throw new Error("Falha ao agendar");
+      const result = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      throw new Error(result?.error ?? "Falha ao agendar");
     }
 
     const result = (await response.json()) as BookAppointmentResult;
@@ -118,6 +122,7 @@ export default function HomePage() {
             barbers={data.barbers}
             appointments={data.appointments}
             absences={data.absences}
+            workingHours={data.workingHours}
             onBook={handleBook}
           />
         </section>

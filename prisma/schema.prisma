@@ -71,3 +71,12 @@ model BarberAbsence {
 
   @@index([barberId, startAt])
 }
+
+model WorkingHours {
+  dayOfWeek Int      @id
+  isOpen    Boolean  @default(true)
+  startTime String
+  endTime   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

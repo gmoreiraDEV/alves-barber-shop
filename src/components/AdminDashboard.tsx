@@ -2,7 +2,13 @@
 
 import { format } from "date-fns";
 import { useMemo, useState } from "react";
-import type { Appointment, Barber, BarberAbsence, Service } from "../types";
+import type {
+  Appointment,
+  Barber,
+  BarberAbsence,
+  Service,
+  WorkingHoursDay,
+} from "../types";
 import AdminAppointmentsBoard from "./AdminAppointmentsBoard";
 import BarberServiceMultiSelect from "./BarberServiceMultiSelect";
 import ServicesTable from "./ServicesTable";
@@ -10,12 +16,14 @@ import { Button } from "./ui/button";
 import { Calendar } from "./ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { useToast } from "./ui/toast";
+import WorkingHoursEditor from "./WorkingHoursEditor";
 
 type AdminDashboardProps = {
   appointments: Appointment[];
   services: Service[];
   barbers: Barber[];
   absences: BarberAbsence[];
+  workingHours: WorkingHoursDay[];
   onDeleteAppointment: (id: string) => Promise<void>;
   onMoveAppointment: (id: string, nextDateIso: string) => Promise<void>;
   onAddService: (service: Omit<Service, "id" | "isActive">) => Promise<void>;
@@ -50,6 +58,7 @@ type AdminDashboardProps = {
     id: string,
     absence: Omit<BarberAbsence, "id">,
   ) => Promise<void>;
+  onSaveWorkingHours: (workingHours: WorkingHoursDay[]) => Promise<void>;
   onLogout: () => void;
   adminName: string;
 };
@@ -69,6 +78,7 @@ export default function AdminDashboard({
   services,
   barbers,
   absences,
+  workingHours,
   onDeleteAppointment,
   onMoveAppointment,
   onAddService,
@@ -81,6 +91,7 @@ export default function AdminDashboard({
   onAddAbsence,
   onDeleteAbsence,
   onUpdateAbsence,
+  onSaveWorkingHours,
   onLogout,
   adminName,
 }: AdminDashboardProps) {
@@ -546,6 +557,7 @@ export default function AdminDashboard({
         services={services}
         barbers={barbers}
         absences={absences}
+        workingHours={workingHours}
         onDeleteAppointment={onDeleteAppointment}
         onMoveAppointment={onMoveAppointment}
       />
@@ -618,70 +630,77 @@ export default function AdminDashboard({
         </div>
       </section>
 
-      <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-bold text-stone-100">Ausências</h3>
-          <button
-            type="button"
-            onClick={() => {
-              resetBarberForm();
-              setActiveTab("absence");
-              setIsModalOpen(true);
-            }}
-            className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
-          >
-            Adicionar ausência
-          </button>
-        </div>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <section className="bg-stone-900/80 border border-stone-800 rounded-3xl p-6 flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-bold text-stone-100">Ausências</h3>
+            <button
+              type="button"
+              onClick={() => {
+                resetBarberForm();
+                setActiveTab("absence");
+                setIsModalOpen(true);
+              }}
+              className="text-[10px] uppercase tracking-widest px-4 py-2 rounded-full border border-amber-600 text-amber-400 hover:bg-amber-600/20"
+            >
+              Adicionar ausência
+            </button>
+          </div>
 
-        <div className="space-y-3">
-          {absences.length === 0 ? (
-            <p className="text-sm text-stone-500">
-              Nenhuma ausência cadastrada.
-            </p>
-          ) : (
-            absences.map((absence) => (
-              <div
-                key={absence.id}
-                className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
-              >
-                <div className="text-sm font-semibold text-stone-100">
-                  {barbersById.get(absence.barberId)?.name ?? "Barbeiro"}
+          <div className="space-y-3">
+            {absences.length === 0 ? (
+              <p className="text-sm text-stone-500">
+                Nenhuma ausência cadastrada.
+              </p>
+            ) : (
+              absences.map((absence) => (
+                <div
+                  key={absence.id}
+                  className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
+                >
+                  <div className="text-sm font-semibold text-stone-100">
+                    {barbersById.get(absence.barberId)?.name ?? "Barbeiro"}
+                  </div>
+                  <div className="text-xs text-stone-500">
+                    {formatDate(new Date(absence.startAt))} —{" "}
+                    {formatDate(new Date(absence.endAt))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void handleEditAbsence(absence)}
+                      className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
+                      disabled={updatingAbsenceId === absence.id}
+                    >
+                      {updatingAbsenceId === absence.id
+                        ? "Salvando..."
+                        : "Editar"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeleteError("");
+                        setAbsenceToDelete(absence);
+                      }}
+                      className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
+                      disabled={deletingAbsenceId === absence.id}
+                    >
+                      {deletingAbsenceId === absence.id
+                        ? "Removendo..."
+                        : "Remover"}
+                    </button>
+                  </div>
                 </div>
-                <div className="text-xs text-stone-500">
-                  {formatDate(new Date(absence.startAt))} —{" "}
-                  {formatDate(new Date(absence.endAt))}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void handleEditAbsence(absence)}
-                    className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
-                    disabled={updatingAbsenceId === absence.id}
-                  >
-                    {updatingAbsenceId === absence.id
-                      ? "Salvando..."
-                      : "Editar"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDeleteError("");
-                      setAbsenceToDelete(absence);
-                    }}
-                    className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
-                    disabled={deletingAbsenceId === absence.id}
-                  >
-                    {deletingAbsenceId === absence.id
-                      ? "Removendo..."
-                      : "Remover"}
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </section>
+              ))
+            )}
+          </div>
+        </section>
+
+        <WorkingHoursEditor
+          workingHours={workingHours}
+          onSaveWorkingHours={onSaveWorkingHours}
+        />
+      </div>
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4">

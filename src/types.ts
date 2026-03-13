@@ -21,6 +21,13 @@ export type BarberAbsence = {
   endAt: string;
 };
 
+export type WorkingHoursDay = {
+  dayOfWeek: number;
+  isOpen: boolean;
+  startTime: string;
+  endTime: string;
+};
+
 export type Appointment = {
   id: string;
   clientName: string;
