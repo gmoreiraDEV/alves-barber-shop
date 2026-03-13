@@ -35,6 +35,25 @@ type BookingFormProps = {
   onBook: (data: AppointmentRequest) => Promise<BookAppointmentResult>;
 };
 
+function startOfDate(date: Date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(0, 0, 0, 0);
+  return nextDate;
+}
+
+function endOfDate(date: Date) {
+  const nextDate = new Date(date);
+  nextDate.setHours(23, 59, 59, 999);
+  return nextDate;
+}
+
+function getDateKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(
+    2,
+    "0",
+  )}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function setTimeFromMinutes(date: Date, minutes: number) {
   const nextDate = new Date(date);
   nextDate.setHours(0, 0, 0, 0);
@@ -120,6 +139,31 @@ export default function BookingForm({
     () => availableBarbers.find((barber) => barber.id === barberId),
     [availableBarbers, barberId],
   );
+  const barberAppointmentsByDate = useMemo(() => {
+    const appointmentsByDate = new Map<string, Appointment[]>();
+
+    for (const appointment of appointments) {
+      if (appointment.barberId !== barberId) {
+        continue;
+      }
+
+      const appointmentDate = new Date(appointment.date);
+      const dateKey = getDateKey(appointmentDate);
+      const list = appointmentsByDate.get(dateKey) ?? [];
+      list.push(appointment);
+      appointmentsByDate.set(dateKey, list);
+    }
+
+    return appointmentsByDate;
+  }, [appointments, barberId]);
+  const barberAbsences = useMemo(
+    () => absences.filter((absence) => absence.barberId === barberId),
+    [absences, barberId],
+  );
+  const servicesById = useMemo(
+    () => new Map(services.map((service) => [service.id, service])),
+    [services],
+  );
 
   const timeSlots = useMemo(() => {
     if (!workingHoursBounds) {
@@ -136,6 +180,79 @@ export default function BookingForm({
     }
     return slots;
   }, [serviceDuration, workingHoursBounds]);
+
+  const getAvailableSlotsForDate = useMemo(
+    () => (date: Date) => {
+      if (!barberId) {
+        return [];
+      }
+
+      const now = new Date();
+      const normalizedDate = startOfDate(date);
+      const dateStart = startOfDate(normalizedDate);
+      const dateEnd = endOfDate(normalizedDate);
+      const workingDay = getWorkingHoursForDate(
+        normalizedWorkingHours,
+        normalizedDate,
+      );
+
+      if (!workingDay?.isOpen) {
+        return [];
+      }
+
+      const barberAppointments =
+        barberAppointmentsByDate.get(getDateKey(normalizedDate)) ?? [];
+
+      return timeSlots.filter((slot) => {
+        const minutes = toMinutes(slot);
+        const slotStart = setTimeFromMinutes(normalizedDate, minutes);
+        const slotEnd = new Date(slotStart);
+        slotEnd.setMinutes(slotStart.getMinutes() + serviceDuration);
+        const slotEndMinutes = minutes + serviceDuration;
+
+        if (slotStart < now) {
+          return false;
+        }
+
+        if (!isRangeWithinWorkingHours(workingDay, minutes, slotEndMinutes)) {
+          return false;
+        }
+
+        for (const appointment of barberAppointments) {
+          const appointmentStart = new Date(appointment.date);
+          const appointmentEnd = new Date(appointmentStart);
+          const duration =
+            servicesById.get(appointment.serviceId)?.duration ??
+            serviceDuration;
+          appointmentEnd.setMinutes(appointmentEnd.getMinutes() + duration);
+
+          if (overlaps(slotStart, slotEnd, appointmentStart, appointmentEnd)) {
+            return false;
+          }
+        }
+
+        for (const absence of barberAbsences) {
+          const absenceStart = new Date(absence.startAt);
+          const absenceEnd = new Date(absence.endAt);
+
+          if (overlaps(slotStart, slotEnd, absenceStart, absenceEnd)) {
+            return false;
+          }
+        }
+
+        return slotStart >= dateStart && slotEnd <= dateEnd;
+      });
+    },
+    [
+      barberId,
+      barberAppointmentsByDate,
+      barberAbsences,
+      normalizedWorkingHours,
+      serviceDuration,
+      servicesById,
+      timeSlots,
+    ],
+  );
 
   useEffect(() => {
     if (
@@ -160,85 +277,29 @@ export default function BookingForm({
       return timeSlots;
     }
 
-    const now = new Date();
-    const dateStart = new Date(selectedDate);
-    dateStart.setHours(0, 0, 0, 0);
+    return getAvailableSlotsForDate(selectedDate);
+  }, [barberId, selectedDate, timeSlots, getAvailableSlotsForDate]);
 
-    const dateEnd = new Date(selectedDate);
-    dateEnd.setHours(23, 59, 59, 999);
-
-    const barberAppointments = appointments.filter(
-      (appointment) => appointment.barberId === barberId,
-    );
-
-    const barberAbsences = absences.filter(
-      (absence) => absence.barberId === barberId,
-    );
-    const workingDay = getWorkingHoursForDate(
-      normalizedWorkingHours,
-      selectedDate,
-    );
-
-    if (!workingDay?.isOpen) {
-      return [];
+  const isCalendarDateDisabled = (date: Date) => {
+    if (isBookingDisabled) {
+      return true;
     }
 
-    return timeSlots.filter((slot) => {
-      const minutes = toMinutes(slot);
-      const slotStart = setTimeFromMinutes(selectedDate, minutes);
-      const slotEnd = new Date(slotStart);
-      slotEnd.setMinutes(slotStart.getMinutes() + serviceDuration);
-      const slotEndMinutes = minutes + serviceDuration;
-
-      if (slotStart < now) {
-        return false;
-      }
-
-      if (!isRangeWithinWorkingHours(workingDay, minutes, slotEndMinutes)) {
-        return false;
-      }
-
-      for (const appointment of barberAppointments) {
-        const appointmentStart = new Date(appointment.date);
-        const appointmentEnd = new Date(appointmentStart);
-        const appointmentService = services.find(
-          (service) => service.id === appointment.serviceId,
-        );
-        const duration = appointmentService?.duration ?? serviceDuration;
-        appointmentEnd.setMinutes(appointmentEnd.getMinutes() + duration);
-
-        if (overlaps(slotStart, slotEnd, appointmentStart, appointmentEnd)) {
-          return false;
-        }
-      }
-
-      for (const absence of barberAbsences) {
-        const absenceStart = new Date(absence.startAt);
-        const absenceEnd = new Date(absence.endAt);
-
-        if (overlaps(slotStart, slotEnd, absenceStart, absenceEnd)) {
-          return false;
-        }
-      }
-
-      return slotStart >= dateStart && slotEnd <= dateEnd;
-    });
-  }, [
-    appointments,
-    absences,
-    barberId,
-    selectedDate,
-    serviceDuration,
-    services,
-    timeSlots,
-    normalizedWorkingHours,
-  ]);
+    return getAvailableSlotsForDate(date).length === 0;
+  };
 
   useEffect(() => {
     if (availableSlots.length > 0 && !availableSlots.includes(time)) {
       setTime(availableSlots[0]);
     }
   }, [time, availableSlots]);
+
+  useEffect(() => {
+    if (selectedDate && availableSlots.length === 0) {
+      setSelectedDate(undefined);
+      setTime("");
+    }
+  }, [selectedDate, availableSlots]);
 
   const isFormValid =
     !isBookingDisabled &&
@@ -483,6 +544,7 @@ export default function BookingForm({
                 mode="single"
                 selected={selectedDate}
                 onSelect={setSelectedDate}
+                disabled={isCalendarDateDisabled}
               />
             </PopoverContent>
           </Popover>
