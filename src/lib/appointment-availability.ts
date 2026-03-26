@@ -53,9 +53,17 @@ export async function lockBarberSchedule(
   tx: PrismaNamespace.TransactionClient,
   barberId: string,
 ) {
-  await tx.$queryRaw`
-    SELECT pg_advisory_xact_lock(hashtext(${barberId})::bigint)
+  const [result] = await tx.$queryRaw<{ acquired: boolean }[]>`
+    SELECT EXISTS (
+      SELECT pg_advisory_xact_lock(hashtext(${barberId})::bigint)
+    ) AS "acquired"
   `;
+
+  if (!result?.acquired) {
+    throw new AppointmentAvailabilityError(
+      "Não foi possível bloquear a agenda do barbeiro.",
+    );
+  }
 }
 
 export async function assertAppointmentAvailability(
