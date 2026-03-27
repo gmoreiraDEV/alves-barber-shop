@@ -1,8 +1,6 @@
-"use client";
-
-import type { ReactNode } from "react";
 import { StackProvider, StackTheme } from "@stackframe/stack";
-import { stackClientApp } from "@/stack/client";
+import type { ReactNode } from "react";
+import { stackServerApp } from "@/stack/server";
 import { stackTheme } from "@/stack/theme";
 
 type ProvidersProps = {
@@ -11,7 +9,7 @@ type ProvidersProps = {
 
 export default function Providers({ children }: ProvidersProps) {
   return (
-    <StackProvider app={stackClientApp}>
+    <StackProvider app={stackServerApp}>
       <StackTheme theme={stackTheme}>{children}</StackTheme>
     </StackProvider>
   );

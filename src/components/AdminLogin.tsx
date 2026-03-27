@@ -1,17 +1,19 @@
 "use client";
 
-import { useStackApp } from "@stackframe/stack";
+import { useRouter } from "next/navigation";
 
 type AdminLoginProps = {
   onCancel: () => void;
 };
 
 export default function AdminLogin({ onCancel }: AdminLoginProps) {
-  const stackApp = useStackApp();
+  const router = useRouter();
 
   return (
     <div className="max-w-md mx-auto bg-stone-900/80 border border-stone-800 rounded-3xl p-8 shadow-2xl">
-      <h3 className="text-2xl font-bold text-stone-100 mb-2">Área do administrador</h3>
+      <h3 className="text-2xl font-bold text-stone-100 mb-2">
+        Área do administrador
+      </h3>
       <p className="text-stone-400 mb-6">
         Entre com sua conta Stack Auth para gerenciar os agendamentos.
       </p>
@@ -19,7 +21,9 @@ export default function AdminLogin({ onCancel }: AdminLoginProps) {
       <div className="flex flex-col gap-4">
         <button
           type="button"
-          onClick={() => stackApp.redirectToSignIn()}
+          onClick={() =>
+            router.push("/handler/sign-in?after_auth_return_to=/dashboard")
+          }
           className="h-11 rounded-full bg-amber-500 text-stone-950 font-bold uppercase tracking-widest text-xs hover:bg-amber-400 transition"
         >
           Entrar
