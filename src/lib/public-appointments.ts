@@ -1,15 +1,102 @@
 import { randomBytes } from "node:crypto";
 import { prisma } from "@/lib/prisma";
-import type { PublicAppointmentDetails } from "@/types";
+import type {
+  PublicAppointmentDetails,
+  PublicAppointmentStatus,
+} from "@/types";
 
 const PUBLIC_CODE_BYTES = 6;
+
+const publicAppointmentInclude = {
+  service: {
+    select: {
+      name: true,
+      price: true,
+      duration: true,
+    },
+  },
+  barber: {
+    select: {
+      name: true,
+    },
+  },
+} as const;
+
+type PublicAppointmentRecord = {
+  id: string;
+  clientName: string;
+  phone: string;
+  date: Date;
+  isActive: boolean;
+  deletedAt: Date | null;
+  service: {
+    name: string;
+    price: number;
+    duration: number;
+  };
+  barber: {
+    name: string;
+  };
+};
 
 function normalizePhone(phone: string) {
   return phone.replace(/\D/g, "");
 }
 
-export function normalizePublicCode(code: string) {
-  return code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+function getPhoneLookupVariants(phone: string) {
+  const digits = normalizePhone(phone);
+  if (!digits) {
+    return [];
+  }
+
+  const variants = new Set<string>();
+  const queue = [digits];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || variants.has(current)) {
+      continue;
+    }
+
+    variants.add(current);
+
+    if (current.startsWith("0") && current.length > 10) {
+      queue.push(current.slice(1));
+    }
+
+    if (current.startsWith("55") && current.length > 11) {
+      queue.push(current.slice(2));
+    }
+  }
+
+  for (const current of Array.from(variants)) {
+    if (
+      (current.length === 10 || current.length === 11) &&
+      !current.startsWith("55")
+    ) {
+      variants.add(`55${current}`);
+    }
+
+    if (
+      (current.length === 10 || current.length === 11) &&
+      !current.startsWith("0")
+    ) {
+      variants.add(`0${current}`);
+    }
+  }
+
+  return Array.from(variants);
+}
+
+function phonesMatch(leftPhone: string, rightPhone: string) {
+  const leftVariants = new Set(getPhoneLookupVariants(leftPhone));
+  if (leftVariants.size === 0) {
+    return false;
+  }
+
+  return getPhoneLookupVariants(rightPhone).some((variant) =>
+    leftVariants.has(variant),
+  );
 }
 
 function maskPhone(phone: string) {
@@ -17,6 +104,11 @@ function maskPhone(phone: string) {
 
   if (digits.length < 4) {
     return phone;
+  }
+
+  if (digits.length >= 12 && digits.startsWith("55")) {
+    const nationalDigits = digits.slice(2);
+    return maskPhone(nationalDigits);
   }
 
   if (digits.length === 11) {
@@ -28,6 +120,24 @@ function maskPhone(phone: string) {
   }
 
   return `Final ${digits.slice(-4)}`;
+}
+
+function getAppointmentStatus(
+  appointment: Pick<PublicAppointmentRecord, "date" | "deletedAt" | "isActive">,
+): PublicAppointmentStatus {
+  const now = new Date();
+  const isCanceled = !appointment.isActive || appointment.deletedAt !== null;
+  const isCompleted = appointment.date < now && !isCanceled;
+
+  if (isCanceled) {
+    return "canceled";
+  }
+
+  if (isCompleted) {
+    return "completed";
+  }
+
+  return "scheduled";
 }
 
 export async function createAppointmentPublicCode() {
@@ -49,40 +159,35 @@ export async function createAppointmentPublicCode() {
   throw new Error("Unable to generate appointment public code");
 }
 
-export async function findAppointmentByPublicAccess(
-  phone: string,
-  publicCode: string,
-) {
-  const normalizedPhone = normalizePhone(phone);
-  const normalizedCode = normalizePublicCode(publicCode);
+export async function findAppointmentsByPublicPhone(phone: string) {
+  if (getPhoneLookupVariants(phone).length === 0) {
+    return [];
+  }
 
-  if (!normalizedPhone || !normalizedCode) {
+  const appointments = await prisma.appointment.findMany({
+    include: publicAppointmentInclude,
+    orderBy: [{ date: "asc" }, { createdAt: "desc" }],
+  });
+
+  return appointments.filter((appointment) =>
+    phonesMatch(appointment.phone, phone),
+  );
+}
+
+export async function findAppointmentByPublicPhoneAndId(
+  phone: string,
+  appointmentId: string,
+) {
+  if (!appointmentId.trim() || getPhoneLookupVariants(phone).length === 0) {
     return null;
   }
 
   const appointment = await prisma.appointment.findUnique({
-    where: { publicCode: normalizedCode },
-    include: {
-      service: {
-        select: {
-          name: true,
-          price: true,
-          duration: true,
-        },
-      },
-      barber: {
-        select: {
-          name: true,
-        },
-      },
-    },
+    where: { id: appointmentId },
+    include: publicAppointmentInclude,
   });
 
-  if (!appointment) {
-    return null;
-  }
-
-  if (normalizePhone(appointment.phone) !== normalizedPhone) {
+  if (!appointment || !phonesMatch(appointment.phone, phone)) {
     return null;
   }
 
@@ -90,22 +195,12 @@ export async function findAppointmentByPublicAccess(
 }
 
 export function serializePublicAppointment(
-  appointment: NonNullable<
-    Awaited<ReturnType<typeof findAppointmentByPublicAccess>>
-  >,
+  appointment: PublicAppointmentRecord,
 ): PublicAppointmentDetails {
-  const now = new Date();
-  const isCanceled = !appointment.isActive || appointment.deletedAt !== null;
-  const isCompleted = appointment.date < now && !isCanceled;
-  const status = isCanceled
-    ? "canceled"
-    : isCompleted
-      ? "completed"
-      : "scheduled";
+  const status = getAppointmentStatus(appointment);
 
   return {
     id: appointment.id,
-    publicCode: appointment.publicCode,
     clientName: appointment.clientName,
     phoneMasked: maskPhone(appointment.phone),
     date: appointment.date.toISOString(),
@@ -117,4 +212,38 @@ export function serializePublicAppointment(
     serviceDuration: appointment.service.duration,
     barberName: appointment.barber.name,
   };
+}
+
+export function serializePublicAppointments(
+  appointments: PublicAppointmentRecord[],
+) {
+  return appointments.map(serializePublicAppointment).sort((left, right) => {
+    const getStatusRank = (status: PublicAppointmentStatus) => {
+      if (status === "scheduled") {
+        return 0;
+      }
+
+      if (status === "canceled") {
+        return 1;
+      }
+
+      return 2;
+    };
+
+    const rankDifference =
+      getStatusRank(left.status) - getStatusRank(right.status);
+
+    if (rankDifference !== 0) {
+      return rankDifference;
+    }
+
+    const leftTime = +new Date(left.date);
+    const rightTime = +new Date(right.date);
+
+    if (left.status === "scheduled") {
+      return leftTime - rightTime;
+    }
+
+    return rightTime - leftTime;
+  });
 }

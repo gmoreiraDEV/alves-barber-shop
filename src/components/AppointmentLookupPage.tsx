@@ -12,23 +12,12 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type { PublicAppointmentDetails } from "@/types";
 import { useToast } from "./ui/toast";
 
 const inputClassName =
   "h-12 w-full rounded-2xl border border-stone-700 bg-stone-950 px-4 text-sm text-stone-100 placeholder:text-stone-500";
-
-function formatPublicCode(code: string) {
-  return (
-    code
-      .toUpperCase()
-      .replace(/[^A-Z0-9]/g, "")
-      .match(/.{1,4}/g)
-      ?.join(" ")
-      .trim() ?? code
-  );
-}
 
 function getStatusMeta(status: PublicAppointmentDetails["status"]) {
   switch (status) {
@@ -50,42 +39,31 @@ function getStatusMeta(status: PublicAppointmentDetails["status"]) {
   }
 }
 
-type AppointmentLookupPageProps = {
-  initialCode?: string;
-};
+function formatAppointmentDate(date: string) {
+  return format(new Date(date), "EEEE, dd 'de' MMMM 'às' HH:mm", {
+    locale: ptBR,
+  });
+}
 
-export default function AppointmentLookupPage({
-  initialCode = "",
-}: AppointmentLookupPageProps) {
+export default function AppointmentLookupPage() {
   const [phone, setPhone] = useState("");
-  const [publicCode, setPublicCode] = useState(initialCode.toUpperCase());
   const [confirmedPhone, setConfirmedPhone] = useState("");
-  const [result, setResult] = useState<PublicAppointmentDetails | null>(null);
+  const [results, setResults] = useState<PublicAppointmentDetails[]>([]);
   const [formError, setFormError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const statusMeta = useMemo(
-    () => (result ? getStatusMeta(result.status) : null),
-    [result],
-  );
-
-  const formattedDate = useMemo(() => {
-    if (!result) {
-      return "";
-    }
-
-    return format(new Date(result.date), "EEEE, dd 'de' MMMM 'às' HH:mm", {
-      locale: ptBR,
-    });
-  }, [result]);
+  const resultCountLabel =
+    results.length === 1
+      ? "1 agendamento encontrado"
+      : `${results.length} agendamentos encontrados`;
 
   const handleLookup = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!phone.trim() || !publicCode.trim()) {
-      setFormError("Informe o telefone e o código do agendamento.");
+    if (!phone.trim()) {
+      setFormError("Informe o telefone usado no agendamento.");
       return;
     }
 
@@ -96,13 +74,13 @@ export default function AppointmentLookupPage({
       const response = await fetch("/api/appointments/lookup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, publicCode }),
+        body: JSON.stringify({ phone }),
       });
 
       const payload = await response.json();
 
       if (!response.ok) {
-        setResult(null);
+        setResults([]);
         setConfirmedPhone("");
         setFormError(
           payload.error ?? "Não foi possível localizar o agendamento.",
@@ -111,9 +89,9 @@ export default function AppointmentLookupPage({
       }
 
       setConfirmedPhone(phone);
-      setResult(payload);
+      setResults(payload as PublicAppointmentDetails[]);
     } catch (_error) {
-      setResult(null);
+      setResults([]);
       setConfirmedPhone("");
       setFormError("Não foi possível consultar agora. Tente novamente.");
     } finally {
@@ -121,8 +99,9 @@ export default function AppointmentLookupPage({
     }
   };
 
-  const handleCancel = async () => {
-    if (!result) {
+  const handleCancel = async (appointmentId: string) => {
+    const appointment = results.find((item) => item.id === appointmentId);
+    if (!appointment) {
       return;
     }
 
@@ -135,14 +114,14 @@ export default function AppointmentLookupPage({
     }
 
     try {
-      setIsCancelling(true);
+      setCancellingId(appointmentId);
 
       const response = await fetch("/api/appointments/cancel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           phone: confirmedPhone,
-          publicCode: result.publicCode,
+          appointmentId,
         }),
       });
 
@@ -158,7 +137,13 @@ export default function AppointmentLookupPage({
         return;
       }
 
-      setResult(payload);
+      setResults((current) =>
+        current.map((item) =>
+          item.id === appointmentId
+            ? (payload as PublicAppointmentDetails)
+            : item,
+        ),
+      );
       toast({
         title: "Agendamento cancelado",
         description: "Seu horário foi cancelado com sucesso.",
@@ -171,7 +156,7 @@ export default function AppointmentLookupPage({
         variant: "error",
       });
     } finally {
-      setIsCancelling(false);
+      setCancellingId(null);
     }
   };
 
@@ -188,8 +173,10 @@ export default function AppointmentLookupPage({
               Consulte ou cancele seu agendamento
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-6 text-stone-400 md:text-base">
-              Use o telefone informado na reserva e o código do agendamento para
-              acompanhar o horário com segurança.
+              Digite apenas o telefone informado na reserva. A busca aceita
+              formatos como <span className="text-stone-200">+55</span>,{" "}
+              <span className="text-stone-200">55</span>,{" "}
+              <span className="text-stone-200">011</span> ou só o número local.
             </p>
           </div>
 
@@ -197,13 +184,14 @@ export default function AppointmentLookupPage({
             <div className="flex items-center gap-3 text-stone-200">
               <ShieldCheck className="h-5 w-5 text-amber-400" />
               <span className="text-sm font-semibold">
-                Busca protegida por telefone e código
+                Busca protegida pelo telefone informado
               </span>
             </div>
             <div className="flex items-center gap-3 text-stone-400">
               <ClipboardCheck className="h-5 w-5 text-stone-500" />
               <span className="text-sm">
-                O código é exibido ao concluir o agendamento.
+                Encontramos os agendamentos mesmo com variações de DDI e
+                prefixo.
               </span>
             </div>
           </div>
@@ -224,7 +212,7 @@ export default function AppointmentLookupPage({
                 Encontrar agendamento
               </h3>
               <p className="text-sm text-stone-400">
-                Preencha os dados usados na reserva.
+                Informe o telefone usado na reserva.
               </p>
             </div>
           </div>
@@ -248,29 +236,9 @@ export default function AppointmentLookupPage({
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
                 className={inputClassName}
-                placeholder="(11) 99999-0000"
+                placeholder="+55 11 99999-0000"
                 autoComplete="tel"
-                disabled={isLoading || isCancelling}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <label
-                htmlFor="lookup-code"
-                className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500"
-              >
-                Código do agendamento
-              </label>
-              <input
-                id="lookup-code"
-                value={publicCode}
-                onChange={(event) =>
-                  setPublicCode(event.target.value.toUpperCase())
-                }
-                className={`${inputClassName} font-mono tracking-[0.22em] uppercase`}
-                placeholder="AB12 CD34 EF56"
-                autoCapitalize="characters"
-                disabled={isLoading || isCancelling}
+                disabled={isLoading || cancellingId !== null}
               />
             </div>
           </div>
@@ -278,14 +246,17 @@ export default function AppointmentLookupPage({
           <button
             type="submit"
             className="mt-6 inline-flex h-12 w-full items-center justify-center rounded-full bg-amber-500 px-6 text-xs font-bold uppercase tracking-[0.28em] text-stone-950 transition hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-70"
-            disabled={isLoading || isCancelling}
+            disabled={isLoading || cancellingId !== null}
           >
             {isLoading ? "Buscando..." : "Consultar agora"}
           </button>
 
           <p className="mt-4 text-xs leading-5 text-stone-500">
-            Ainda não tem o código? Ele aparece na confirmação do agendamento.
-            Se precisar, faça uma nova reserva em{" "}
+            Você pode digitar com ou sem{" "}
+            <span className="text-stone-300">+</span>, com ou sem{" "}
+            <span className="text-stone-300">55</span> e também com prefixo{" "}
+            <span className="text-stone-300">0</span>. Se precisar, faça uma
+            nova reserva em{" "}
             <Link href="/" className="text-amber-300 hover:text-amber-200">
               nossa página inicial
             </Link>
@@ -294,110 +265,129 @@ export default function AppointmentLookupPage({
         </form>
 
         <div className="rounded-[2rem] border border-stone-800 bg-stone-900/60 p-6 shadow-2xl">
-          {result ? (
+          {results.length > 0 ? (
             <div className="space-y-6">
               <div className="flex flex-col gap-4 border-b border-stone-800 pb-6 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
-                    Reserva localizada
+                    Resultado
                   </p>
                   <h3 className="mt-2 text-2xl font-bold text-stone-100">
-                    {result.clientName}
+                    {resultCountLabel}
                   </h3>
                   <p className="mt-1 text-sm text-stone-400">
-                    Telefone confirmado: {result.phoneMasked}
-                  </p>
-                </div>
-
-                {statusMeta ? (
-                  <span
-                    className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${statusMeta.className}`}
-                  >
-                    {statusMeta.label}
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
-                  <div className="flex items-center gap-2 text-stone-500">
-                    <CalendarClock className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em]">
-                      Data e hora
-                    </span>
-                  </div>
-                  <p className="mt-3 text-base font-semibold capitalize text-stone-100">
-                    {formattedDate}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
-                  <div className="flex items-center gap-2 text-stone-500">
-                    <ClipboardCheck className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em]">
-                      Código
-                    </span>
-                  </div>
-                  <p className="mt-3 font-mono text-base font-semibold tracking-[0.22em] text-stone-100">
-                    {formatPublicCode(result.publicCode)}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
-                  <div className="flex items-center gap-2 text-stone-500">
-                    <Scissors className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em]">
-                      Serviço
-                    </span>
-                  </div>
-                  <p className="mt-3 text-base font-semibold text-stone-100">
-                    {result.serviceName}
-                  </p>
-                  <p className="mt-1 text-sm text-stone-400">
-                    {result.serviceDuration} min • R$ {result.servicePrice}
-                  </p>
-                </div>
-
-                <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
-                  <div className="flex items-center gap-2 text-stone-500">
-                    <UserRound className="h-4 w-4 text-amber-400" />
-                    <span className="text-xs font-semibold uppercase tracking-[0.18em]">
-                      Barbeiro
-                    </span>
-                  </div>
-                  <p className="mt-3 text-base font-semibold text-stone-100">
-                    {result.barberName}
+                    Telefone confirmado: {results[0]?.phoneMasked}
                   </p>
                 </div>
               </div>
 
-              {result.status === "canceled" && result.canceledAt ? (
-                <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-                  Este agendamento foi cancelado em{" "}
-                  {format(new Date(result.canceledAt), "dd/MM/yyyy 'às' HH:mm")}
-                  .
-                </div>
-              ) : null}
+              <div className="space-y-4">
+                {results.map((appointment) => {
+                  const statusMeta = getStatusMeta(appointment.status);
 
-              <div className="flex flex-col gap-3 border-t border-stone-800 pt-4 sm:flex-row">
-                {result.canCancel ? (
-                  <button
-                    type="button"
-                    onClick={handleCancel}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-5 text-xs font-bold uppercase tracking-[0.18em] text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={isCancelling || isLoading}
-                  >
-                    <XCircle className="h-4 w-4" />
-                    {isCancelling ? "Cancelando..." : "Cancelar agendamento"}
-                  </button>
-                ) : null}
+                  return (
+                    <div
+                      key={appointment.id}
+                      className="rounded-[1.75rem] border border-stone-800 bg-stone-950/60 p-5"
+                    >
+                      <div className="flex flex-col gap-4 border-b border-stone-800 pb-5 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-stone-500">
+                            Reserva localizada
+                          </p>
+                          <h3 className="mt-2 text-2xl font-bold text-stone-100">
+                            {appointment.clientName}
+                          </h3>
+                        </div>
 
-                <Link
-                  href="/"
-                  className="inline-flex h-11 items-center justify-center rounded-full border border-stone-700 px-5 text-xs font-bold uppercase tracking-[0.18em] text-stone-200 transition hover:bg-stone-800"
-                >
-                  Fazer novo agendamento
-                </Link>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${statusMeta.className}`}
+                        >
+                          {statusMeta.label}
+                        </span>
+                      </div>
+
+                      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
+                          <div className="flex items-center gap-2 text-stone-500">
+                            <CalendarClock className="h-4 w-4 text-amber-400" />
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                              Data e hora
+                            </span>
+                          </div>
+                          <p className="mt-3 text-base font-semibold capitalize text-stone-100">
+                            {formatAppointmentDate(appointment.date)}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
+                          <div className="flex items-center gap-2 text-stone-500">
+                            <Scissors className="h-4 w-4 text-amber-400" />
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                              Serviço
+                            </span>
+                          </div>
+                          <p className="mt-3 text-base font-semibold text-stone-100">
+                            {appointment.serviceName}
+                          </p>
+                          <p className="mt-1 text-sm text-stone-400">
+                            {appointment.serviceDuration} min • R${" "}
+                            {appointment.servicePrice}
+                          </p>
+                        </div>
+
+                        <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
+                          <div className="flex items-center gap-2 text-stone-500">
+                            <UserRound className="h-4 w-4 text-amber-400" />
+                            <span className="text-xs font-semibold uppercase tracking-[0.18em]">
+                              Barbeiro
+                            </span>
+                          </div>
+                          <p className="mt-3 text-base font-semibold text-stone-100">
+                            {appointment.barberName}
+                          </p>
+                        </div>
+                      </div>
+
+                      {appointment.status === "canceled" &&
+                      appointment.canceledAt ? (
+                        <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                          Este agendamento foi cancelado em{" "}
+                          {format(
+                            new Date(appointment.canceledAt),
+                            "dd/MM/yyyy 'às' HH:mm",
+                          )}
+                          .
+                        </div>
+                      ) : null}
+
+                      <div className="mt-5 flex flex-col gap-3 border-t border-stone-800 pt-4 sm:flex-row">
+                        {appointment.canCancel ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCancel(appointment.id)}
+                            className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-5 text-xs font-bold uppercase tracking-[0.18em] text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                            disabled={
+                              cancellingId === appointment.id || isLoading
+                            }
+                          >
+                            <XCircle className="h-4 w-4" />
+                            {cancellingId === appointment.id
+                              ? "Cancelando..."
+                              : "Cancelar agendamento"}
+                          </button>
+                        ) : null}
+
+                        <Link
+                          href="/"
+                          className="inline-flex h-11 items-center justify-center rounded-full border border-stone-700 px-5 text-xs font-bold uppercase tracking-[0.18em] text-stone-200 transition hover:bg-stone-800"
+                        >
+                          Fazer novo agendamento
+                        </Link>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ) : (
@@ -410,9 +400,10 @@ export default function AppointmentLookupPage({
                   Seus detalhes aparecerão aqui
                 </h3>
                 <p className="mt-3 max-w-xl text-sm leading-6 text-stone-400">
-                  Após informar o telefone e o código da reserva, você verá o
-                  horário, o serviço, o barbeiro responsável e poderá cancelar o
-                  agendamento se ele ainda estiver ativo.
+                  Após informar o telefone da reserva, você verá os agendamentos
+                  vinculados a esse número, com status, horário, serviço,
+                  barbeiro responsável e a opção de cancelar quando ainda
+                  estiver ativo.
                 </p>
               </div>
 
@@ -427,18 +418,18 @@ export default function AppointmentLookupPage({
                 </div>
                 <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                    2. Guarde o código
+                    2. Consulte pelo telefone
                   </p>
                   <p className="mt-2 text-sm text-stone-300">
-                    O sistema gera um código exclusivo para sua reserva.
+                    O sistema aceita o número com ou sem DDI e prefixos.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-stone-800 bg-stone-950/70 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
-                    3. Consulte quando quiser
+                    3. Cancele se precisar
                   </p>
                   <p className="mt-2 text-sm text-stone-300">
-                    Use telefone e código para verificar ou cancelar.
+                    Os horários ativos podem ser cancelados pela própria tela.
                   </p>
                 </div>
               </div>

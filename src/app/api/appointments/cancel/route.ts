@@ -1,24 +1,27 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  findAppointmentByPublicAccess,
+  findAppointmentByPublicPhoneAndId,
   serializePublicAppointment,
 } from "@/lib/public-appointments";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-  const publicCode =
-    typeof body.publicCode === "string" ? body.publicCode.trim() : "";
+  const appointmentId =
+    typeof body.appointmentId === "string" ? body.appointmentId.trim() : "";
 
-  if (!phone || !publicCode) {
+  if (!phone || !appointmentId) {
     return NextResponse.json(
-      { error: "Informe telefone e código do agendamento." },
+      { error: "Informe o telefone e selecione o agendamento." },
       { status: 400 },
     );
   }
 
-  const appointment = await findAppointmentByPublicAccess(phone, publicCode);
+  const appointment = await findAppointmentByPublicPhoneAndId(
+    phone,
+    appointmentId,
+  );
 
   if (!appointment) {
     return NextResponse.json(

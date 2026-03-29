@@ -49,7 +49,6 @@ export type AppointmentRequest = {
 
 export type BookAppointmentResult = {
   id: string;
-  publicCode: string;
   date: string;
 };
 
@@ -57,7 +56,6 @@ export type PublicAppointmentStatus = "scheduled" | "completed" | "canceled";
 
 export type PublicAppointmentDetails = {
   id: string;
-  publicCode: string;
   clientName: string;
   phoneMasked: string;
   date: string;

@@ -114,7 +114,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         id: appointment.id,
-        publicCode: appointment.publicCode,
         date: appointment.date.toISOString(),
       },
       { status: 201 },

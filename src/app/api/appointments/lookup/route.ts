@@ -1,30 +1,28 @@
 import { NextResponse } from "next/server";
 import {
-  findAppointmentByPublicAccess,
-  serializePublicAppointment,
+  findAppointmentsByPublicPhone,
+  serializePublicAppointments,
 } from "@/lib/public-appointments";
 
 export async function POST(request: Request) {
   const body = await request.json();
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
-  const publicCode =
-    typeof body.publicCode === "string" ? body.publicCode.trim() : "";
 
-  if (!phone || !publicCode) {
+  if (!phone) {
     return NextResponse.json(
-      { error: "Informe telefone e código do agendamento." },
+      { error: "Informe o telefone do agendamento." },
       { status: 400 },
     );
   }
 
-  const appointment = await findAppointmentByPublicAccess(phone, publicCode);
+  const appointments = await findAppointmentsByPublicPhone(phone);
 
-  if (!appointment) {
+  if (appointments.length === 0) {
     return NextResponse.json(
       { error: "Agendamento não encontrado." },
       { status: 404 },
     );
   }
 
-  return NextResponse.json(serializePublicAppointment(appointment));
+  return NextResponse.json(serializePublicAppointments(appointments));
 }
