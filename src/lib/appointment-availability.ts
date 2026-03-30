@@ -1,8 +1,12 @@
 import type { Prisma as PrismaNamespace } from "@/generated/prisma";
 import { Prisma } from "@/generated/prisma";
 import {
+  getBusinessDayOfWeek,
+  getBusinessDayRange,
+  getBusinessMinutes,
+} from "@/lib/business-time";
+import {
   createDefaultWorkingHours,
-  getWorkingHoursForDate,
   isRangeWithinWorkingHours,
   normalizeWorkingHours,
 } from "@/lib/working-hours";
@@ -23,18 +27,6 @@ type AvailabilityCheckInput = {
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
   return aStart < bEnd && bStart < aEnd;
-}
-
-function startOfDay(date: Date) {
-  const nextDate = new Date(date);
-  nextDate.setHours(0, 0, 0, 0);
-  return nextDate;
-}
-
-function endOfDay(date: Date) {
-  const nextDate = new Date(date);
-  nextDate.setHours(23, 59, 59, 999);
-  return nextDate;
 }
 
 async function loadWorkingHours(tx: PrismaNamespace.TransactionClient) {
@@ -74,10 +66,13 @@ export async function assertAppointmentAvailability(
   const endAt = new Date(startAt);
   endAt.setMinutes(endAt.getMinutes() + serviceDuration);
 
-  const startMinutes = startAt.getHours() * 60 + startAt.getMinutes();
+  const startMinutes = getBusinessMinutes(startAt);
   const endMinutes = startMinutes + serviceDuration;
   const workingHours = await loadWorkingHours(tx);
-  const workingDay = getWorkingHoursForDate(workingHours, startAt);
+  const workingDay = workingHours.find(
+    (day) => day.dayOfWeek === getBusinessDayOfWeek(startAt),
+  );
+  const businessDayRange = getBusinessDayRange(startAt);
 
   if (!isRangeWithinWorkingHours(workingDay, startMinutes, endMinutes)) {
     throw new AppointmentAvailabilityError(
@@ -111,8 +106,8 @@ export async function assertAppointmentAvailability(
           }
         : {}),
       date: {
-        gte: startOfDay(startAt),
-        lte: endOfDay(startAt),
+        gte: businessDayRange.start,
+        lte: businessDayRange.end,
       },
     },
     include: {

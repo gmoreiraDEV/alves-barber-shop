@@ -118,10 +118,6 @@ function formatDateShort(date: Date) {
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
-function formatDateFull(date: Date) {
-  return date.toLocaleString("pt-BR");
-}
-
 function formatMonthLabel(date: Date) {
   return date.toLocaleDateString("pt-BR", {
     month: "long",
@@ -362,7 +358,7 @@ export default function AdminAppointmentsBoard({
     const list: string[] = [];
     for (
       let minutes = workingHoursBounds.openMinutes;
-      minutes < workingHoursBounds.closeMinutes;
+      minutes <= workingHoursBounds.closeMinutes;
       minutes += SLOT_STEP
     ) {
       list.push(toTimeLabel(minutes));
@@ -875,55 +871,77 @@ export default function AdminAppointmentsBoard({
       )}
 
       <div className="space-y-3">
+        <div>
+          <h4 className="text-sm font-semibold text-stone-100">
+            Lista do período
+          </h4>
+          <p className="text-xs text-stone-500">
+            Visualização tabular dos agendamentos filtrados.
+          </p>
+        </div>
         {filteredAppointments.length === 0 ? (
           <p className="text-sm text-stone-500">
             Nenhum agendamento no período.
           </p>
         ) : (
-          filteredAppointments.map((appointment) => {
-            const service = servicesById.get(appointment.serviceId);
-            const barber = barbersById.get(appointment.barberId);
+          <div className="overflow-x-auto rounded-2xl border border-stone-800 bg-stone-950/60">
+            <table className="min-w-full divide-y divide-stone-800 text-sm">
+              <thead className="bg-stone-950/90">
+                <tr className="text-left text-[10px] uppercase tracking-widest text-stone-500">
+                  <th className="px-4 py-3 font-medium">Data</th>
+                  <th className="px-4 py-3 font-medium">Horário</th>
+                  <th className="px-4 py-3 font-medium">Cliente</th>
+                  <th className="px-4 py-3 font-medium">Serviço</th>
+                  <th className="px-4 py-3 font-medium">Barbeiro</th>
+                  <th className="px-4 py-3 font-medium">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-800">
+                {filteredAppointments.map((appointment) => {
+                  const service = servicesById.get(appointment.serviceId);
+                  const barber = barbersById.get(appointment.barberId);
+                  const appointmentDate = new Date(appointment.date);
 
-            return (
-              <div
-                key={appointment.id}
-                className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                    {format(new Date(appointment.date), "HH:mm")}
-                  </span>
-                  <span className="text-sm font-semibold text-stone-100">
-                    {appointment.clientName}
-                  </span>
-                </div>
-                <div className="text-xs text-stone-500">
-                  Serviço: {service?.name ?? "Serviço"}
-                </div>
-                <div className="text-xs text-stone-500">
-                  Barbeiro: {barber?.name ?? "Barbeiro"}
-                </div>
-                <div className="text-xs text-stone-500">
-                  Data: {formatDateFull(new Date(appointment.date))}
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => handleDelete(appointment.id)}
-                    className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-red-500 text-red-400 hover:bg-red-500/20"
-                    disabled={
-                      deletingAppointmentId === appointment.id ||
-                      movingAppointmentId !== null
-                    }
-                  >
-                    {deletingAppointmentId === appointment.id
-                      ? "Excluindo..."
-                      : "Excluir"}
-                  </button>
-                </div>
-              </div>
-            );
-          })
+                  return (
+                    <tr key={appointment.id} className="text-stone-200">
+                      <td className="whitespace-nowrap px-4 py-3 text-xs text-stone-400">
+                        {format(appointmentDate, "dd/MM/yyyy")}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                          {format(appointmentDate, "HH:mm")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-stone-100">
+                        {appointment.clientName}
+                      </td>
+                      <td className="px-4 py-3 text-stone-300">
+                        {service?.name ?? "Serviço"}
+                      </td>
+                      <td className="px-4 py-3 text-stone-300">
+                        {barber?.name ?? "Barbeiro"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(appointment.id)}
+                          className="rounded-full border border-red-500 px-3 py-1 text-[10px] uppercase tracking-widest text-red-400 hover:bg-red-500/20"
+                          disabled={
+                            deletingAppointmentId === appointment.id ||
+                            movingAppointmentId !== null
+                          }
+                        >
+                          {deletingAppointmentId === appointment.id
+                            ? "Excluindo..."
+                            : "Excluir"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </section>

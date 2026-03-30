@@ -7,6 +7,62 @@ import {
 } from "@/lib/appointment-availability";
 import { prisma } from "@/lib/prisma";
 import { createAppointmentPublicCode } from "@/lib/public-appointments";
+import type { AppointmentBookingItem } from "@/types";
+
+function normalizeBookingItems(body: unknown): AppointmentBookingItem[] {
+  if (!body || typeof body !== "object") {
+    return [];
+  }
+
+  const payload = body as {
+    clientName?: unknown;
+    serviceId?: unknown;
+    items?: unknown;
+  };
+
+  if (Array.isArray(payload.items)) {
+    const normalizedItems = payload.items.map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const entry = item as {
+        clientName?: unknown;
+        serviceId?: unknown;
+      };
+
+      const clientName =
+        typeof entry.clientName === "string" ? entry.clientName.trim() : "";
+      const serviceId =
+        typeof entry.serviceId === "string" ? entry.serviceId.trim() : "";
+
+      if (!clientName || !serviceId) {
+        return null;
+      }
+
+      return { clientName, serviceId };
+    });
+
+    if (normalizedItems.length === 0 || normalizedItems.includes(null)) {
+      return [];
+    }
+
+    return normalizedItems.filter(
+      (item): item is AppointmentBookingItem => item !== null,
+    );
+  }
+
+  const clientName =
+    typeof payload.clientName === "string" ? payload.clientName.trim() : "";
+  const serviceId =
+    typeof payload.serviceId === "string" ? payload.serviceId.trim() : "";
+
+  if (!clientName || !serviceId) {
+    return [];
+  }
+
+  return [{ clientName, serviceId }];
+}
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -53,9 +109,13 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json();
-  const { clientName, phone, date, serviceId, barberId } = body;
+  const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  const date = typeof body.date === "string" ? body.date : "";
+  const barberId =
+    typeof body.barberId === "string" ? body.barberId.trim() : "";
+  const items = normalizeBookingItems(body);
 
-  if (!clientName || !phone || !date || !serviceId || !barberId) {
+  if (!phone || !date || !barberId || items.length === 0) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
@@ -65,12 +125,24 @@ export async function POST(request: Request) {
   }
 
   try {
-    const appointment = await prisma.$transaction(async (tx) => {
+    const createdAppointments = await prisma.$transaction(async (tx) => {
       await lockBarberSchedule(tx, barberId);
 
-      const service = await tx.service.findUnique({ where: { id: serviceId } });
-      if (!service || !service.isActive) {
-        throw new Error("Serviço indisponível");
+      const uniqueServiceIds = Array.from(
+        new Set(items.map((item) => item.serviceId)),
+      );
+      const services = await tx.service.findMany({
+        where: { id: { in: uniqueServiceIds } },
+      });
+      const servicesById = new Map(
+        services.map((service) => [service.id, service]),
+      );
+
+      for (const item of items) {
+        const service = servicesById.get(item.serviceId);
+        if (!service || !service.isActive) {
+          throw new Error("Serviço indisponível");
+        }
       }
 
       const barber = await tx.barber.findUnique({
@@ -85,37 +157,60 @@ export async function POST(request: Request) {
         throw new Error("Barbeiro indisponível");
       }
 
-      const canPerformService = barber.serviceLinks.some(
-        (serviceLink) => serviceLink.serviceId === serviceId,
+      const canPerformAllServices = items.every((item) =>
+        barber.serviceLinks.some(
+          (serviceLink) => serviceLink.serviceId === item.serviceId,
+        ),
       );
-      if (!canPerformService) {
+      if (!canPerformAllServices) {
         throw new Error("Barbeiro não atende esse serviço");
       }
 
-      await assertAppointmentAvailability(tx, {
-        barberId,
-        startAt: appointmentDate,
-        serviceDuration: service.duration,
-      });
+      const createdEntries = [];
+      let offsetMinutes = 0;
 
-      return tx.appointment.create({
-        data: {
-          publicCode: await createAppointmentPublicCode(),
-          clientName,
-          phone,
-          date: appointmentDate,
-          serviceId,
+      for (const item of items) {
+        const service = servicesById.get(item.serviceId);
+        if (!service) {
+          throw new Error("Serviço indisponível");
+        }
+
+        const nextDate = new Date(appointmentDate);
+        nextDate.setMinutes(nextDate.getMinutes() + offsetMinutes);
+
+        await assertAppointmentAvailability(tx, {
           barberId,
-          isActive: true,
-        },
-      });
+          startAt: nextDate,
+          serviceDuration: service.duration,
+        });
+
+        const appointment = await tx.appointment.create({
+          data: {
+            publicCode: await createAppointmentPublicCode(),
+            clientName: item.clientName,
+            phone,
+            date: nextDate,
+            serviceId: item.serviceId,
+            barberId,
+            isActive: true,
+          },
+        });
+
+        createdEntries.push({
+          id: appointment.id,
+          clientName: appointment.clientName,
+          date: appointment.date.toISOString(),
+          serviceId: appointment.serviceId,
+        });
+
+        offsetMinutes += service.duration;
+      }
+
+      return createdEntries;
     }, appointmentTransactionOptions);
 
     return NextResponse.json(
-      {
-        id: appointment.id,
-        date: appointment.date.toISOString(),
-      },
+      { appointments: createdAppointments },
       { status: 201 },
     );
   } catch (error) {

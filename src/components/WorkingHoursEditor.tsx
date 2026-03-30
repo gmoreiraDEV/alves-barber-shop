@@ -79,7 +79,9 @@ export default function WorkingHoursEditor({
             Horário de atendimento
           </h3>
           <p className="text-xs text-stone-500">
-            Define a agenda padrão do agendamento online e do quadro admin.
+            Define a agenda padrão do agendamento online e do quadro admin. O
+            horário final é o último horário disponível para iniciar um
+            atendimento.
           </p>
         </div>
         <button
@@ -159,7 +161,7 @@ export default function WorkingHoursEditor({
                 </label>
 
                 <label className="flex flex-col gap-2 text-xs uppercase tracking-widest text-stone-500">
-                  Fim
+                  Último horário
                   <input
                     type="time"
                     value={day.endTime}

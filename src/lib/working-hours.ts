@@ -103,6 +103,6 @@ export function isRangeWithinWorkingHours(
 
   return (
     startMinutes >= toMinutes(workingDay.startTime) &&
-    endMinutes <= toMinutes(workingDay.endTime)
+    startMinutes <= toMinutes(workingDay.endTime)
   );
 }

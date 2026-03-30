@@ -39,17 +39,27 @@ export type Appointment = {
   deletedAt?: string | null;
 };
 
-export type AppointmentRequest = {
+export type AppointmentBookingItem = {
   clientName: string;
+  serviceId: string;
+};
+
+export type AppointmentRequest = {
   phone: string;
   date: string;
-  serviceId: string;
   barberId: string;
+  items: AppointmentBookingItem[];
+};
+
+export type BookAppointmentEntry = {
+  id: string;
+  clientName: string;
+  date: string;
+  serviceId: string;
 };
 
 export type BookAppointmentResult = {
-  id: string;
-  date: string;
+  appointments: BookAppointmentEntry[];
 };
 
 export type PublicAppointmentStatus = "scheduled" | "completed" | "canceled";
