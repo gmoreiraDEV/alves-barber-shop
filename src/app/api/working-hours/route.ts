@@ -9,6 +9,9 @@ import {
 import { stackServerApp } from "@/stack/server";
 import type { WorkingHoursDay } from "@/types";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function isValidWorkingHoursPayload(
   input: unknown,
 ): input is WorkingHoursDay[] {

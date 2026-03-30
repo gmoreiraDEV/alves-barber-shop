@@ -22,6 +22,10 @@ async function ensureOk(response: Response) {
   return response;
 }
 
+function fetchFresh(input: string) {
+  return fetch(input, { cache: "no-store" }).then(ensureOk);
+}
+
 export async function loadHomeData(): Promise<LoadResult> {
   const [
     servicesResponse,
@@ -30,11 +34,11 @@ export async function loadHomeData(): Promise<LoadResult> {
     absencesResponse,
     workingHoursResponse,
   ] = await Promise.all([
-    fetch("/api/services").then(ensureOk),
-    fetch("/api/barbers").then(ensureOk),
-    fetch("/api/appointments?minimal=true").then(ensureOk),
-    fetch("/api/absences").then(ensureOk),
-    fetch("/api/working-hours").then(ensureOk),
+    fetchFresh("/api/services"),
+    fetchFresh("/api/barbers"),
+    fetchFresh("/api/appointments?minimal=true"),
+    fetchFresh("/api/absences"),
+    fetchFresh("/api/working-hours"),
   ]);
 
   const [services, barbers, appointments, absences, workingHours] =
@@ -63,11 +67,11 @@ export async function loadAdminData(): Promise<LoadResult> {
     absencesResponse,
     workingHoursResponse,
   ] = await Promise.all([
-    fetch("/api/services?all=true").then(ensureOk),
-    fetch("/api/barbers").then(ensureOk),
-    fetch("/api/appointments").then(ensureOk),
-    fetch("/api/absences").then(ensureOk),
-    fetch("/api/working-hours").then(ensureOk),
+    fetchFresh("/api/services?all=true"),
+    fetchFresh("/api/barbers"),
+    fetchFresh("/api/appointments"),
+    fetchFresh("/api/absences"),
+    fetchFresh("/api/working-hours"),
   ]);
 
   const [services, barbers, appointments, absences, workingHours] =
