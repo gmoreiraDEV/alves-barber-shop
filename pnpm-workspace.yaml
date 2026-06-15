@@ -1,4 +1,21 @@
+packages:
+  - .
+
+allowBuilds:
+  '@prisma/engines': true
+  esbuild: true
+  msw: true
+  prisma: true
+  sharp: true
+
+confirmModulesPurge: false
+minimumReleaseAge: 0
+
 onlyBuiltDependencies:
+  - '@prisma/engines'
+  - esbuild
+  - msw
+  - prisma
   - sharp
 
 overrides:
