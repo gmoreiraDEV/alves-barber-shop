@@ -5,9 +5,54 @@ import {
   assertAppointmentAvailability,
   lockBarberSchedule,
 } from "@/lib/appointment-availability";
+import { getPhoneLookupVariants, toCustomerPhoneKey } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import { createAppointmentPublicCode } from "@/lib/public-appointments";
+import { stackServerApp } from "@/stack/server";
 import type { AppointmentBookingItem } from "@/types";
+
+const adminAppointmentInclude = {
+  customer: {
+    select: {
+      id: true,
+      name: true,
+      phone: true,
+      normalizedPhone: true,
+      createdAt: true,
+      updatedAt: true,
+      _count: {
+        select: {
+          appointments: true,
+        },
+      },
+    },
+  },
+} as const;
+
+type AdminAppointmentRecord = {
+  id: string;
+  clientName: string;
+  phone: string;
+  date: Date;
+  serviceId: string;
+  barberId: string;
+  customerId: string | null;
+  customerIsNew: boolean;
+  isActive: boolean;
+  deletedAt: Date | null;
+  createdAt: Date;
+  customer: {
+    id: string;
+    name: string;
+    phone: string;
+    normalizedPhone: string;
+    createdAt: Date;
+    updatedAt: Date;
+    _count: {
+      appointments: number;
+    };
+  } | null;
+};
 
 function normalizeBookingItems(body: unknown): AppointmentBookingItem[] {
   if (!body || typeof body !== "object") {
@@ -64,6 +109,33 @@ function normalizeBookingItems(body: unknown): AppointmentBookingItem[] {
   return [{ clientName, serviceId }];
 }
 
+function serializeAdminAppointment(appointment: AdminAppointmentRecord) {
+  return {
+    id: appointment.id,
+    clientName: appointment.clientName,
+    phone: appointment.phone,
+    date: appointment.date.toISOString(),
+    serviceId: appointment.serviceId,
+    barberId: appointment.barberId,
+    customerId: appointment.customerId,
+    customerIsNew: appointment.customerIsNew,
+    isActive: appointment.isActive,
+    deletedAt: appointment.deletedAt?.toISOString() ?? null,
+    createdAt: appointment.createdAt.toISOString(),
+    customer: appointment.customer
+      ? {
+          id: appointment.customer.id,
+          name: appointment.customer.name,
+          phone: appointment.customer.phone,
+          normalizedPhone: appointment.customer.normalizedPhone,
+          createdAt: appointment.customer.createdAt.toISOString(),
+          updatedAt: appointment.customer.updatedAt.toISOString(),
+          appointmentsCount: appointment.customer._count.appointments,
+        }
+      : null,
+  };
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const minimal = searchParams.get("minimal") === "true";
@@ -93,29 +165,38 @@ export async function GET(request: Request) {
         date: appointment.date.toISOString(),
         serviceId: appointment.serviceId,
         barberId: appointment.barberId,
+        customerId: null,
+        customerIsNew: false,
         isActive: true,
         deletedAt: null,
       })),
     );
   }
 
+  const user = await stackServerApp.getUser({ or: "return-null" });
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const appointments = await prisma.appointment.findMany({
     where: { isActive: true },
     orderBy: { createdAt: "desc" },
+    include: adminAppointmentInclude,
   });
 
-  return NextResponse.json(appointments);
+  return NextResponse.json(appointments.map(serializeAdminAppointment));
 }
 
 export async function POST(request: Request) {
   const body = await request.json();
   const phone = typeof body.phone === "string" ? body.phone.trim() : "";
+  const normalizedPhone = toCustomerPhoneKey(phone);
   const date = typeof body.date === "string" ? body.date : "";
   const barberId =
     typeof body.barberId === "string" ? body.barberId.trim() : "";
   const items = normalizeBookingItems(body);
 
-  if (!phone || !date || !barberId || items.length === 0) {
+  if (!phone || !normalizedPhone || !date || !barberId || items.length === 0) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
@@ -166,6 +247,23 @@ export async function POST(request: Request) {
         throw new Error("Barbeiro não atende esse serviço");
       }
 
+      const customerPhoneVariants = getPhoneLookupVariants(phone);
+      let customer = await tx.customer.findFirst({
+        where: { normalizedPhone: { in: customerPhoneVariants } },
+        orderBy: { createdAt: "asc" },
+      });
+      const customerIsNew = !customer;
+
+      if (!customer) {
+        customer = await tx.customer.create({
+          data: {
+            name: items[0]?.clientName ?? "",
+            phone,
+            normalizedPhone,
+          },
+        });
+      }
+
       const createdEntries = [];
       let offsetMinutes = 0;
 
@@ -192,6 +290,8 @@ export async function POST(request: Request) {
             date: nextDate,
             serviceId: item.serviceId,
             barberId,
+            customerId: customer.id,
+            customerIsNew,
             isActive: true,
           },
         });

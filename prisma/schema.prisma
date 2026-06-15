@@ -42,22 +42,38 @@ model BarberService {
   @@index([serviceId])
 }
 
-model Appointment {
-  id         String   @id @default(cuid())
-  publicCode String   @unique
-  clientName String
-  phone      String
-  date       DateTime
-  serviceId  String
-  barberId   String
-  isActive   Boolean  @default(true)
-  deletedAt  DateTime?
-  createdAt  DateTime @default(now())
+model Customer {
+  id              String        @id @default(cuid())
+  name            String
+  phone           String
+  normalizedPhone String        @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  appointments    Appointment[]
 
-  service Service @relation(fields: [serviceId], references: [id])
-  barber  Barber  @relation(fields: [barberId], references: [id])
+  @@index([createdAt])
+}
+
+model Appointment {
+  id            String   @id @default(cuid())
+  publicCode    String   @unique
+  clientName    String
+  phone         String
+  date          DateTime
+  serviceId     String
+  barberId      String
+  customerId    String?
+  customerIsNew Boolean  @default(false)
+  isActive      Boolean  @default(true)
+  deletedAt     DateTime?
+  createdAt     DateTime @default(now())
+
+  service  Service   @relation(fields: [serviceId], references: [id])
+  barber   Barber    @relation(fields: [barberId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
 
   @@index([isActive])
+  @@index([customerId])
 }
 
 model BarberAbsence {

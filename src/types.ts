@@ -28,6 +28,16 @@ export type WorkingHoursDay = {
   endTime: string;
 };
 
+export type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  normalizedPhone: string;
+  createdAt: string;
+  updatedAt: string;
+  appointmentsCount: number;
+};
+
 export type Appointment = {
   id: string;
   clientName: string;
@@ -35,8 +45,12 @@ export type Appointment = {
   date: string;
   serviceId: string;
   barberId: string;
+  customerId?: string | null;
+  customerIsNew?: boolean;
   isActive: boolean;
   deletedAt?: string | null;
+  createdAt?: string;
+  customer?: Customer | null;
 };
 
 export type AppointmentBookingItem = {

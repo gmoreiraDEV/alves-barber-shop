@@ -1,7 +1,15 @@
 "use client";
 
 import { format } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronLeft,
+  ChevronRight,
+  Phone,
+  Scissors,
+  UserRound,
+  X,
+} from "lucide-react";
 import type { DragEvent, ReactNode } from "react";
 import { Fragment, useMemo, useState } from "react";
 import {
@@ -123,6 +131,13 @@ function formatMonthLabel(date: Date) {
     month: "long",
     year: "numeric",
   });
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(value);
 }
 
 function getMonthGridDays(referenceDate: Date) {
@@ -252,6 +267,9 @@ export default function AdminAppointmentsBoard({
   const [movingAppointmentId, setMovingAppointmentId] = useState<string | null>(
     null,
   );
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<
+    string | null
+  >(null);
   const { toast } = useToast();
 
   const now = new Date();
@@ -271,6 +289,22 @@ export default function AdminAppointmentsBoard({
     () => new Map(barbers.map((barber) => [barber.id, barber])),
     [barbers],
   );
+  const selectedAppointment = useMemo(
+    () =>
+      appointments.find(
+        (appointment) => appointment.id === selectedAppointmentId,
+      ) ?? null,
+    [appointments, selectedAppointmentId],
+  );
+  const selectedAppointmentDate = selectedAppointment
+    ? new Date(selectedAppointment.date)
+    : null;
+  const selectedAppointmentService = selectedAppointment
+    ? servicesById.get(selectedAppointment.serviceId)
+    : null;
+  const selectedAppointmentBarber = selectedAppointment
+    ? barbersById.get(selectedAppointment.barberId)
+    : null;
 
   const rangeStart = useMemo(() => {
     if (range === "today") return startOfDay(now);
@@ -536,8 +570,8 @@ export default function AdminAppointmentsBoard({
     const time = format(date, "HH:mm");
 
     return (
-      // biome-ignore lint/a11y/noStaticElementInteractions: drag interaction handled by HTML drag API.
-      <div
+      <button
+        type="button"
         key={appointment.id}
         draggable={movingAppointmentId !== appointment.id}
         onDragStart={() => setDraggedAppointmentId(appointment.id)}
@@ -545,15 +579,23 @@ export default function AdminAppointmentsBoard({
           setDraggedAppointmentId(null);
           setHoverTarget(null);
         }}
-        className="cursor-grab rounded-xl border border-stone-700 bg-stone-900 px-2 py-1.5 active:cursor-grabbing"
+        onClick={() => setSelectedAppointmentId(appointment.id)}
+        className="w-full cursor-grab rounded-xl border border-stone-700 bg-stone-900 px-2 py-1.5 text-left transition hover:border-amber-500/60 hover:bg-stone-800 active:cursor-grabbing"
       >
-        <div className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-          {time}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+            {time}
+          </span>
+          {appointment.customerIsNew ? (
+            <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+              Novo
+            </span>
+          ) : null}
         </div>
         <p className="mt-1 text-xs font-medium text-stone-200">
           {appointment.clientName}
         </p>
-      </div>
+      </button>
     );
   };
 
@@ -903,40 +945,64 @@ export default function AdminAppointmentsBoard({
                   const appointmentDate = new Date(appointment.date);
 
                   return (
-                    <tr key={appointment.id} className="text-stone-200">
-                      <td className="whitespace-nowrap px-4 py-3 text-xs text-stone-400">
-                        {format(appointmentDate, "dd/MM/yyyy")}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
-                          {format(appointmentDate, "HH:mm")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-stone-100">
-                        {appointment.clientName}
-                      </td>
-                      <td className="px-4 py-3 text-stone-300">
-                        {service?.name ?? "Serviço"}
-                      </td>
-                      <td className="px-4 py-3 text-stone-300">
-                        {barber?.name ?? "Barbeiro"}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(appointment.id)}
-                          className="rounded-full border border-red-500 px-3 py-1 text-[10px] uppercase tracking-widest text-red-400 hover:bg-red-500/20"
-                          disabled={
-                            deletingAppointmentId === appointment.id ||
-                            movingAppointmentId !== null
+                    <Fragment key={appointment.id}>
+                      {/* biome-ignore lint/a11y/useSemanticElements: table row opens the appointment details modal. */}
+                      <tr
+                        className="cursor-pointer text-stone-200 transition hover:bg-stone-900/70"
+                        onClick={() => setSelectedAppointmentId(appointment.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            setSelectedAppointmentId(appointment.id);
                           }
-                        >
-                          {deletingAppointmentId === appointment.id
-                            ? "Excluindo..."
-                            : "Excluir"}
-                        </button>
-                      </td>
-                    </tr>
+                        }}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <td className="whitespace-nowrap px-4 py-3 text-xs text-stone-400">
+                          {format(appointmentDate, "dd/MM/yyyy")}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <span className="inline-flex items-center rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                            {format(appointmentDate, "HH:mm")}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 font-medium text-stone-100">
+                          <span className="flex flex-wrap items-center gap-2">
+                            {appointment.clientName}
+                            {appointment.customerIsNew ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                                Novo
+                              </span>
+                            ) : null}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-stone-300">
+                          {service?.name ?? "Serviço"}
+                        </td>
+                        <td className="px-4 py-3 text-stone-300">
+                          {barber?.name ?? "Barbeiro"}
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void handleDelete(appointment.id);
+                            }}
+                            className="rounded-full border border-red-500 px-3 py-1 text-[10px] uppercase tracking-widest text-red-400 hover:bg-red-500/20"
+                            disabled={
+                              deletingAppointmentId === appointment.id ||
+                              movingAppointmentId !== null
+                            }
+                          >
+                            {deletingAppointmentId === appointment.id
+                              ? "Excluindo..."
+                              : "Excluir"}
+                          </button>
+                        </td>
+                      </tr>
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -944,6 +1010,155 @@ export default function AdminAppointmentsBoard({
           </div>
         )}
       </div>
+
+      {selectedAppointment ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-6">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click closes dialog. */}
+          {/* biome-ignore lint/a11y/useKeyWithClickEvents: backdrop is mouse-only affordance. */}
+          <div
+            className="absolute inset-0 bg-black/70"
+            onClick={() => setSelectedAppointmentId(null)}
+          />
+          <div
+            className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-stone-800 bg-stone-950 p-6 shadow-2xl scrollbar-premium"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="appointment-details-title"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4
+                    id="appointment-details-title"
+                    className="text-lg font-bold text-stone-100"
+                  >
+                    Detalhes do agendamento
+                  </h4>
+                  {selectedAppointment.customerIsNew ? (
+                    <span className="inline-flex items-center rounded-full bg-emerald-500/15 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-emerald-300">
+                      Novo cliente
+                    </span>
+                  ) : null}
+                </div>
+                <p className="mt-1 text-xs text-stone-500">
+                  Informações internas para contato manual.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedAppointmentId(null)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-stone-700 text-stone-400 transition hover:bg-stone-900 hover:text-stone-100"
+                aria-label="Fechar detalhes do agendamento"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-stone-800 bg-stone-900/50 p-4">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  <UserRound className="h-3.5 w-3.5" aria-hidden="true" />
+                  Cliente
+                </div>
+                <p className="mt-2 text-sm font-semibold text-stone-100">
+                  {selectedAppointment.clientName}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Cadastro:{" "}
+                  {selectedAppointment.customer
+                    ? selectedAppointment.customer.name
+                    : "Não vinculado"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-stone-800 bg-stone-900/50 p-4">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  <Phone className="h-3.5 w-3.5" aria-hidden="true" />
+                  Contato
+                </div>
+                <p className="mt-2 text-sm font-semibold text-stone-100">
+                  {selectedAppointment.phone}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Telefone salvo:{" "}
+                  {selectedAppointment.customer?.phone ?? "Não vinculado"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-stone-800 bg-stone-900/50 p-4">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+                  Agenda
+                </div>
+                <p className="mt-2 text-sm font-semibold text-stone-100">
+                  {selectedAppointmentDate
+                    ? format(selectedAppointmentDate, "dd/MM/yyyy HH:mm")
+                    : "-"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  Criado em:{" "}
+                  {selectedAppointment.createdAt
+                    ? format(
+                        new Date(selectedAppointment.createdAt),
+                        "dd/MM/yyyy HH:mm",
+                      )
+                    : "-"}
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-stone-800 bg-stone-900/50 p-4">
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
+                  Atendimento
+                </div>
+                <p className="mt-2 text-sm font-semibold text-stone-100">
+                  {selectedAppointmentService?.name ?? "Serviço"}
+                </p>
+                <p className="mt-1 text-xs text-stone-500">
+                  {selectedAppointmentService
+                    ? `${selectedAppointmentService.duration} min • ${formatCurrency(
+                        selectedAppointmentService.price,
+                      )}`
+                    : "Serviço não encontrado"}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-3 rounded-2xl border border-stone-800 bg-stone-900/40 p-4 md:grid-cols-3">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  Barbeiro
+                </p>
+                <p className="mt-1 text-sm text-stone-100">
+                  {selectedAppointmentBarber?.name ?? "Barbeiro"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  Total do cliente
+                </p>
+                <p className="mt-1 text-sm text-stone-100">
+                  {selectedAppointment.customer?.appointmentsCount ?? 1}{" "}
+                  agendamento(s)
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-stone-500">
+                  Cliente desde
+                </p>
+                <p className="mt-1 text-sm text-stone-100">
+                  {selectedAppointment.customer
+                    ? format(
+                        new Date(selectedAppointment.customer.createdAt),
+                        "dd/MM/yyyy",
+                      )
+                    : "-"}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
