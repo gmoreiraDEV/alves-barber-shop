@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { getPhoneLookupVariants, maskPhone, phonesMatch } from "@/lib/phone";
 import { prisma } from "@/lib/prisma";
 import type {
   PublicAppointmentDetails,
@@ -38,89 +39,6 @@ type PublicAppointmentRecord = {
     name: string;
   };
 };
-
-function normalizePhone(phone: string) {
-  return phone.replace(/\D/g, "");
-}
-
-function getPhoneLookupVariants(phone: string) {
-  const digits = normalizePhone(phone);
-  if (!digits) {
-    return [];
-  }
-
-  const variants = new Set<string>();
-  const queue = [digits];
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    if (!current || variants.has(current)) {
-      continue;
-    }
-
-    variants.add(current);
-
-    if (current.startsWith("0") && current.length > 10) {
-      queue.push(current.slice(1));
-    }
-
-    if (current.startsWith("55") && current.length > 11) {
-      queue.push(current.slice(2));
-    }
-  }
-
-  for (const current of Array.from(variants)) {
-    if (
-      (current.length === 10 || current.length === 11) &&
-      !current.startsWith("55")
-    ) {
-      variants.add(`55${current}`);
-    }
-
-    if (
-      (current.length === 10 || current.length === 11) &&
-      !current.startsWith("0")
-    ) {
-      variants.add(`0${current}`);
-    }
-  }
-
-  return Array.from(variants);
-}
-
-function phonesMatch(leftPhone: string, rightPhone: string) {
-  const leftVariants = new Set(getPhoneLookupVariants(leftPhone));
-  if (leftVariants.size === 0) {
-    return false;
-  }
-
-  return getPhoneLookupVariants(rightPhone).some((variant) =>
-    leftVariants.has(variant),
-  );
-}
-
-function maskPhone(phone: string) {
-  const digits = normalizePhone(phone);
-
-  if (digits.length < 4) {
-    return phone;
-  }
-
-  if (digits.length >= 12 && digits.startsWith("55")) {
-    const nationalDigits = digits.slice(2);
-    return maskPhone(nationalDigits);
-  }
-
-  if (digits.length === 11) {
-    return `(${digits.slice(0, 2)}) *****-${digits.slice(-4)}`;
-  }
-
-  if (digits.length === 10) {
-    return `(${digits.slice(0, 2)}) ****-${digits.slice(-4)}`;
-  }
-
-  return `Final ${digits.slice(-4)}`;
-}
 
 function getAppointmentStatus(
   appointment: Pick<PublicAppointmentRecord, "date" | "deletedAt" | "isActive">,
