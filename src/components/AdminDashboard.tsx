@@ -1,8 +1,9 @@
 "use client";
 
-import { format } from "date-fns";
+import { addDays, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { useMemo, useState } from "react";
+import type { DateRange } from "react-day-picker";
 import type {
   Appointment,
   Barber,
@@ -131,8 +132,10 @@ export default function AdminDashboard({
   const [absenceStartTime, setAbsenceStartTime] = useState("09:00");
   const [absenceEndTime, setAbsenceEndTime] = useState("18:00");
   const [blockMonth, setBlockMonth] = useState("");
+  const [blockRange, setBlockRange] = useState<DateRange>();
+  const [blockWholeMonth, setBlockWholeMonth] = useState(false);
   const [blockBarberId, setBlockBarberId] = useState("");
-  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
+  const [isBlockCalendarOpen, setIsBlockCalendarOpen] = useState(false);
   const [modalError, setModalError] = useState("");
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -357,16 +360,28 @@ export default function AdminDashboard({
 
   const handleBlockMonth = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!blockMonth) return;
+    if (blockWholeMonth ? !blockMonth : !blockRange?.from || !blockRange.to)
+      return;
     setIsSavingAbsence(true);
     try {
-      await onAddAbsence({
-        month: blockMonth,
-        barberId: blockBarberId || null,
-      });
-      setBlockMonth("");
+      if (blockWholeMonth) {
+        await onAddAbsence({
+          month: blockMonth,
+          barberId: blockBarberId || null,
+        });
+        setBlockMonth("");
+      } else if (blockRange?.from && blockRange.to) {
+        const startDate = format(blockRange.from, "yyyy-MM-dd");
+        const endDate = format(addDays(blockRange.to, 1), "yyyy-MM-dd");
+        await onAddAbsence({
+          barberId: blockBarberId || null,
+          startAt: `${startDate}T00:00:00-03:00`,
+          endAt: `${endDate}T00:00:00-03:00`,
+        });
+        setBlockRange(undefined);
+      }
       toast({
-        title: "Mês bloqueado",
+        title: blockWholeMonth ? "Mês bloqueado" : "Período bloqueado",
         description: "Novos agendamentos estão suspensos até a liberação.",
         variant: "success",
       });
@@ -748,55 +763,86 @@ export default function AdminDashboard({
                   className="flex flex-col gap-3 rounded-2xl border border-amber-700/60 bg-stone-900 p-4"
                 >
                   <strong className="text-sm text-stone-100">
-                    Bloquear um mês até liberar a agenda
+                    Bloquear período da agenda
                   </strong>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Popover
-                      open={isMonthPickerOpen}
-                      onOpenChange={setIsMonthPickerOpen}
+                      open={isBlockCalendarOpen}
+                      onOpenChange={setIsBlockCalendarOpen}
                     >
                       <PopoverTrigger asChild>
                         <Button
                           type="button"
                           variant="outline"
-                          aria-label="Selecionar mês e ano"
-                          className="h-10 justify-start px-3 text-left font-normal text-stone-100"
+                          aria-label={
+                            blockWholeMonth
+                              ? "Selecionar mês e ano"
+                              : "Selecionar período"
+                          }
+                          className="h-10 justify-start border-stone-700 bg-stone-950 px-3 text-left font-normal text-stone-100 shadow-none hover:bg-stone-900 hover:text-stone-100"
                           disabled={isSavingAbsence}
                         >
-                          {blockMonth
-                            ? format(
-                                new Date(
-                                  Number(blockMonth.slice(0, 4)),
-                                  Number(blockMonth.slice(5, 7)) - 1,
-                                  1,
-                                ),
-                                "MMMM 'de' yyyy",
-                                { locale: ptBR },
-                              )
-                            : "Escolha mês e ano"}
+                          {blockWholeMonth
+                            ? blockMonth
+                              ? format(
+                                  new Date(
+                                    Number(blockMonth.slice(0, 4)),
+                                    Number(blockMonth.slice(5, 7)) - 1,
+                                    1,
+                                  ),
+                                  "MMMM 'de' yyyy",
+                                  { locale: ptBR },
+                                )
+                              : "Escolha mês e ano"
+                            : blockRange?.from
+                              ? blockRange.to
+                                ? `${format(blockRange.from, "dd/MM/yyyy")} – ${format(blockRange.to, "dd/MM/yyyy")}`
+                                : `De ${format(blockRange.from, "dd/MM/yyyy")} até...`
+                              : "Escolha as datas do período"}
                         </Button>
                       </PopoverTrigger>
                       <PopoverContent align="start" className="p-0">
-                        <Calendar
-                          mode="single"
-                          locale={ptBR}
-                          selected={
-                            blockMonth
-                              ? new Date(
-                                  Number(blockMonth.slice(0, 4)),
-                                  Number(blockMonth.slice(5, 7)) - 1,
-                                  1,
-                                )
-                              : undefined
-                          }
-                          onSelect={(date) => {
-                            if (date) {
-                              setBlockMonth(format(date, "yyyy-MM"));
-                              setIsMonthPickerOpen(false);
+                        {blockWholeMonth ? (
+                          <Calendar
+                            mode="single"
+                            locale={ptBR}
+                            defaultMonth={
+                              blockMonth
+                                ? new Date(
+                                    Number(blockMonth.slice(0, 4)),
+                                    Number(blockMonth.slice(5, 7)) - 1,
+                                    1,
+                                  )
+                                : blockRange?.from
+                                  ? blockRange.from
+                                  : new Date()
                             }
-                          }}
-                          initialFocus
-                        />
+                            selected={
+                              blockMonth
+                                ? new Date(
+                                    Number(blockMonth.slice(0, 4)),
+                                    Number(blockMonth.slice(5, 7)) - 1,
+                                    1,
+                                  )
+                                : undefined
+                            }
+                            onSelect={(date) => {
+                              if (date) {
+                                setBlockMonth(format(date, "yyyy-MM"));
+                                setIsBlockCalendarOpen(false);
+                              }
+                            }}
+                            initialFocus
+                          />
+                        ) : (
+                          <Calendar
+                            mode="range"
+                            locale={ptBR}
+                            selected={blockRange}
+                            onSelect={setBlockRange}
+                            initialFocus
+                          />
+                        )}
                       </PopoverContent>
                     </Popover>
                     <select
@@ -814,11 +860,33 @@ export default function AdminDashboard({
                     </select>
                   </div>
                   <button
+                    type="button"
+                    onClick={() => {
+                      setBlockWholeMonth((current) => !current);
+                      setIsBlockCalendarOpen(false);
+                    }}
+                    className="self-start rounded-full border border-stone-700 px-4 py-2 text-xs font-semibold text-stone-300 hover:border-amber-600 hover:text-amber-400"
+                    disabled={isSavingAbsence}
+                  >
+                    {blockWholeMonth
+                      ? "Trocar para seleção de período"
+                      : "Bloquear o mês inteiro"}
+                  </button>
+                  <button
                     type="submit"
-                    disabled={!blockMonth || isSavingAbsence}
+                    disabled={
+                      (blockWholeMonth
+                        ? !blockMonth
+                        : !blockRange?.from || !blockRange.to) ||
+                      isSavingAbsence
+                    }
                     className="h-10 rounded-full bg-amber-500 text-stone-950 font-bold uppercase tracking-widest text-xs disabled:opacity-50"
                   >
-                    {isSavingAbsence ? "Salvando..." : "Bloquear mês"}
+                    {isSavingAbsence
+                      ? "Salvando..."
+                      : blockWholeMonth
+                        ? "Bloquear mês inteiro"
+                        : "Bloquear período"}
                   </button>
                 </form>
                 {absences.length === 0 ? (

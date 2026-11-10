@@ -36,15 +36,29 @@ export async function POST(request: Request) {
     return NextResponse.json(absence, { status: 201 });
   }
 
-  if (typeof barberId !== "string" || !barberId || !startAt || !endAt) {
+  if (
+    (barberId !== null && typeof barberId !== "string") ||
+    typeof startAt !== "string" ||
+    typeof endAt !== "string"
+  ) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+  }
+
+  const parsedStart = new Date(startAt);
+  const parsedEnd = new Date(endAt);
+  if (
+    Number.isNaN(parsedStart.getTime()) ||
+    Number.isNaN(parsedEnd.getTime()) ||
+    parsedEnd <= parsedStart
+  ) {
+    return NextResponse.json({ error: "Invalid date range" }, { status: 400 });
   }
 
   const absence = await prisma.barberAbsence.create({
     data: {
-      barberId,
-      startAt: new Date(startAt),
-      endAt: new Date(endAt),
+      barberId: barberId || null,
+      startAt: parsedStart,
+      endAt: parsedEnd,
     },
   });
 
