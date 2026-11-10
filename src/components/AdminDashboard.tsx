@@ -1,6 +1,7 @@
 "use client";
 
 import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 import { useMemo, useState } from "react";
 import type {
   Appointment,
@@ -131,6 +132,7 @@ export default function AdminDashboard({
   const [absenceEndTime, setAbsenceEndTime] = useState("18:00");
   const [blockMonth, setBlockMonth] = useState("");
   const [blockBarberId, setBlockBarberId] = useState("");
+  const [isMonthPickerOpen, setIsMonthPickerOpen] = useState(false);
   const [modalError, setModalError] = useState("");
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -749,13 +751,54 @@ export default function AdminDashboard({
                     Bloquear um mês até liberar a agenda
                   </strong>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <input
-                      type="month"
-                      value={blockMonth}
-                      onChange={(event) => setBlockMonth(event.target.value)}
-                      className="h-10 rounded-xl border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100"
-                      disabled={isSavingAbsence}
-                    />
+                    <Popover
+                      open={isMonthPickerOpen}
+                      onOpenChange={setIsMonthPickerOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-label="Selecionar mês e ano"
+                          className="h-10 justify-start px-3 text-left font-normal text-stone-100"
+                          disabled={isSavingAbsence}
+                        >
+                          {blockMonth
+                            ? format(
+                                new Date(
+                                  Number(blockMonth.slice(0, 4)),
+                                  Number(blockMonth.slice(5, 7)) - 1,
+                                  1,
+                                ),
+                                "MMMM 'de' yyyy",
+                                { locale: ptBR },
+                              )
+                            : "Escolha mês e ano"}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="p-0">
+                        <Calendar
+                          mode="single"
+                          locale={ptBR}
+                          selected={
+                            blockMonth
+                              ? new Date(
+                                  Number(blockMonth.slice(0, 4)),
+                                  Number(blockMonth.slice(5, 7)) - 1,
+                                  1,
+                                )
+                              : undefined
+                          }
+                          onSelect={(date) => {
+                            if (date) {
+                              setBlockMonth(format(date, "yyyy-MM"));
+                              setIsMonthPickerOpen(false);
+                            }
+                          }}
+                          initialFocus
+                        />
+                      </PopoverContent>
+                    </Popover>
                     <select
                       value={blockBarberId}
                       onChange={(event) => setBlockBarberId(event.target.value)}
