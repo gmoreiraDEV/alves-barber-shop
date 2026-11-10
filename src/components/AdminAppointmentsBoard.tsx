@@ -445,7 +445,8 @@ export default function AdminAppointmentsBoard({
     }
 
     const barberAbsences = absences.filter(
-      (absence) => absence.barberId === appointment.barberId,
+      (absence) =>
+        absence.barberId === appointment.barberId || absence.barberId === null,
     );
     for (const absence of barberAbsences) {
       const absenceStart = new Date(absence.startAt);

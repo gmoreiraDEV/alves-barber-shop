@@ -176,9 +176,10 @@ export default function DashboardPage() {
   };
 
   const handleAddAbsence = async (absence: {
-    barberId: string;
-    startAt: string;
-    endAt: string;
+    barberId?: string | null;
+    startAt?: string;
+    endAt?: string;
+    month?: string;
   }) => {
     const response = await fetch("/api/absences", {
       method: "POST",

@@ -78,12 +78,12 @@ model Appointment {
 
 model BarberAbsence {
   id        String   @id @default(cuid())
-  barberId  String
+  barberId  String?
   startAt   DateTime
   endAt     DateTime
   createdAt DateTime @default(now())
 
-  barber Barber @relation(fields: [barberId], references: [id])
+  barber Barber? @relation(fields: [barberId], references: [id])
 
   @@index([barberId, startAt])
 }

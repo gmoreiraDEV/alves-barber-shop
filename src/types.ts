@@ -16,7 +16,7 @@ export type Barber = {
 
 export type BarberAbsence = {
   id: string;
-  barberId: string;
+  barberId: string | null;
   startAt: string;
   endAt: string;
 };

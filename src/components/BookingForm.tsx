@@ -217,7 +217,10 @@ export default function BookingForm({
     return appointmentsByDate;
   }, [appointments, barberId]);
   const barberAbsences = useMemo(
-    () => absences.filter((absence) => absence.barberId === barberId),
+    () =>
+      absences.filter(
+        (absence) => absence.barberId === barberId || absence.barberId === null,
+      ),
     [absences, barberId],
   );
 

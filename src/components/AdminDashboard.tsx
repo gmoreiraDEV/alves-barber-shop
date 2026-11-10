@@ -50,9 +50,10 @@ type AdminDashboardProps = {
     },
   ) => Promise<void>;
   onAddAbsence: (absence: {
-    barberId: string;
-    startAt: string;
-    endAt: string;
+    barberId?: string | null;
+    startAt?: string;
+    endAt?: string;
+    month?: string;
   }) => Promise<void>;
   onDeleteAbsence: (id: string) => Promise<void>;
   onUpdateAbsence: (
@@ -69,6 +70,20 @@ type DashboardView = "operations" | "finance";
 
 function formatDate(date: Date) {
   return date.toLocaleString("pt-BR");
+}
+
+function isMonthBlock(absence: BarberAbsence) {
+  const start = new Date(absence.startAt);
+  const end = new Date(absence.endAt);
+  const expectedEnd = new Date(
+    Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1, 3),
+  );
+  return (
+    start.getUTCDate() === 1 &&
+    start.getUTCHours() === 3 &&
+    start.getUTCMinutes() === 0 &&
+    end.getTime() === expectedEnd.getTime()
+  );
 }
 
 function _toIsoDate(date?: Date) {
@@ -114,6 +129,8 @@ export default function AdminDashboard({
   const [absenceAllDay, setAbsenceAllDay] = useState(true);
   const [absenceStartTime, setAbsenceStartTime] = useState("09:00");
   const [absenceEndTime, setAbsenceEndTime] = useState("18:00");
+  const [blockMonth, setBlockMonth] = useState("");
+  const [blockBarberId, setBlockBarberId] = useState("");
   const [modalError, setModalError] = useState("");
   const [serviceToDelete, setServiceToDelete] = useState<Service | null>(null);
   const [deleteError, setDeleteError] = useState("");
@@ -336,6 +353,32 @@ export default function AdminDashboard({
     }
   };
 
+  const handleBlockMonth = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!blockMonth) return;
+    setIsSavingAbsence(true);
+    try {
+      await onAddAbsence({
+        month: blockMonth,
+        barberId: blockBarberId || null,
+      });
+      setBlockMonth("");
+      toast({
+        title: "Mês bloqueado",
+        description: "Novos agendamentos estão suspensos até a liberação.",
+        variant: "success",
+      });
+    } catch (_error) {
+      toast({
+        title: "Falha ao bloquear mês",
+        description: "Tente novamente.",
+        variant: "error",
+      });
+    } finally {
+      setIsSavingAbsence(false);
+    }
+  };
+
   const handleConfirmDeleteService = async () => {
     if (!serviceToDelete) return;
     try {
@@ -477,7 +520,7 @@ export default function AdminDashboard({
   };
 
   const handleEditAbsence = async (absence: BarberAbsence) => {
-    const barberId = window.prompt("ID do barbeiro", absence.barberId);
+    const barberId = window.prompt("ID do barbeiro", absence.barberId ?? "");
     if (barberId === null) return;
     const startAt = window.prompt("Início (ISO)", absence.startAt);
     if (startAt === null) return;
@@ -698,6 +741,43 @@ export default function AdminDashboard({
               </div>
 
               <div className="space-y-3">
+                <form
+                  onSubmit={handleBlockMonth}
+                  className="flex flex-col gap-3 rounded-2xl border border-amber-700/60 bg-stone-900 p-4"
+                >
+                  <strong className="text-sm text-stone-100">
+                    Bloquear um mês até liberar a agenda
+                  </strong>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      type="month"
+                      value={blockMonth}
+                      onChange={(event) => setBlockMonth(event.target.value)}
+                      className="h-10 rounded-xl border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100"
+                      disabled={isSavingAbsence}
+                    />
+                    <select
+                      value={blockBarberId}
+                      onChange={(event) => setBlockBarberId(event.target.value)}
+                      className="h-10 rounded-xl border border-stone-700 bg-stone-950 px-3 text-sm text-stone-100"
+                      disabled={isSavingAbsence}
+                    >
+                      <option value="">Toda a barbearia</option>
+                      {barbers.map((barber) => (
+                        <option key={barber.id} value={barber.id}>
+                          {barber.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={!blockMonth || isSavingAbsence}
+                    className="h-10 rounded-full bg-amber-500 text-stone-950 font-bold uppercase tracking-widest text-xs disabled:opacity-50"
+                  >
+                    {isSavingAbsence ? "Salvando..." : "Bloquear mês"}
+                  </button>
+                </form>
                 {absences.length === 0 ? (
                   <p className="text-sm text-stone-500">
                     Nenhuma ausência cadastrada.
@@ -709,23 +789,28 @@ export default function AdminDashboard({
                       className="border border-stone-800 rounded-2xl p-4 flex flex-col gap-2"
                     >
                       <div className="text-sm font-semibold text-stone-100">
-                        {barbersById.get(absence.barberId)?.name ?? "Barbeiro"}
+                        {absence.barberId
+                          ? (barbersById.get(absence.barberId)?.name ??
+                            "Barbeiro")
+                          : "Toda a barbearia"}
                       </div>
                       <div className="text-xs text-stone-500">
                         {formatDate(new Date(absence.startAt))} —{" "}
                         {formatDate(new Date(absence.endAt))}
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleEditAbsence(absence)}
-                          className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
-                          disabled={updatingAbsenceId === absence.id}
-                        >
-                          {updatingAbsenceId === absence.id
-                            ? "Salvando..."
-                            : "Editar"}
-                        </button>
+                        {absence.barberId && !isMonthBlock(absence) ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleEditAbsence(absence)}
+                            className="text-[10px] uppercase tracking-widest px-3 py-1 rounded-full border border-sky-500 text-sky-400 hover:bg-sky-500/20"
+                            disabled={updatingAbsenceId === absence.id}
+                          >
+                            {updatingAbsenceId === absence.id
+                              ? "Salvando..."
+                              : "Editar"}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => {
@@ -737,7 +822,9 @@ export default function AdminDashboard({
                         >
                           {deletingAbsenceId === absence.id
                             ? "Removendo..."
-                            : "Remover"}
+                            : isMonthBlock(absence)
+                              ? "Liberar mês"
+                              : "Remover"}
                         </button>
                       </div>
                     </div>
@@ -1165,9 +1252,15 @@ export default function AdminDashboard({
             <p className="text-sm text-stone-400">
               Tem certeza que deseja excluir a ausência de{" "}
               <span className="text-stone-100 font-semibold">
-                {barbersById.get(absenceToDelete.barberId)?.name ?? "Barbeiro"}
+                {absenceToDelete.barberId
+                  ? (barbersById.get(absenceToDelete.barberId)?.name ??
+                    "Barbeiro")
+                  : "Toda a barbearia"}
               </span>
-              ? Esta ação remove a ausência do banco de dados.
+              ?{" "}
+              {isMonthBlock(absenceToDelete)
+                ? "Esta ação libera o mês para novos agendamentos."
+                : "Esta ação remove a ausência do banco de dados."}
             </p>
             {deleteError ? (
               <div className="mt-4 rounded-2xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">

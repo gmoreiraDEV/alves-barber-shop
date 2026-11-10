@@ -1,0 +1,1 @@
+ALTER TABLE "BarberAbsence" ALTER COLUMN "barberId" DROP NOT NULL;

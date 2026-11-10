@@ -82,7 +82,7 @@ export async function assertAppointmentAvailability(
 
   const absenceCount = await tx.barberAbsence.count({
     where: {
-      barberId,
+      OR: [{ barberId }, { barberId: null }],
       startAt: { lt: endAt },
       endAt: { gt: startAt },
     },
